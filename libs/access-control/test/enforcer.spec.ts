@@ -7,6 +7,7 @@ const TENANT_B = 'tenant-b';
 describe('Casbin enforcer (RBAC with tenant domains)', () => {
   it('model declares sub,dom,act with a tenant-domain matcher', () => {
     expect(CASBIN_MODEL).toContain('r = sub, dom, act');
+    expect(CASBIN_MODEL).toContain('r.sub == p.sub');
     expect(CASBIN_MODEL).toContain('g(r.sub, p.sub, r.dom)');
     expect(CASBIN_MODEL).toContain('p.dom == r.dom');
   });

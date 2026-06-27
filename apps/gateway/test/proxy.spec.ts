@@ -83,7 +83,9 @@ describe('gateway proxyHandler resilience (W2-04)', () => {
     process.env.GATEWAY_UPSTREAM_TIMEOUT_MS = '5'; // fire the abort quickly
 
     const res = mockRes();
-    await runWithCtx(() => proxyHandler(req(), res, () => undefined));
+    await runWithCtx(() => {
+      proxyHandler(req(), res, () => undefined);
+    });
 
     expect(res.statusCode).toBe(504);
     expect(res.headers[HttpHeaderKey.CorrelationId]).toBe(CORRELATION_ID);
@@ -101,7 +103,9 @@ describe('gateway proxyHandler resilience (W2-04)', () => {
     global.fetch = jest.fn().mockRejectedValue(err) as unknown as typeof fetch;
 
     const res = mockRes();
-    await runWithCtx(() => proxyHandler(req(), res, () => undefined));
+    await runWithCtx(() => {
+      proxyHandler(req(), res, () => undefined);
+    });
 
     expect(res.statusCode).toBe(503);
     expect(res.headers[HttpHeaderKey.CorrelationId]).toBe(CORRELATION_ID);
@@ -114,7 +118,9 @@ describe('gateway proxyHandler resilience (W2-04)', () => {
     global.fetch = jest.fn().mockRejectedValue(err) as unknown as typeof fetch;
 
     const res = mockRes();
-    await runWithCtx(() => proxyHandler(req(), res, () => undefined));
+    await runWithCtx(() => {
+      proxyHandler(req(), res, () => undefined);
+    });
 
     expect(res.statusCode).toBe(502);
     expect((res.body as { errors: Array<{ code: string }> }).errors[0].code).toBe('E_BAD_GATEWAY');
@@ -128,7 +134,9 @@ describe('gateway proxyHandler resilience (W2-04)', () => {
     }) as unknown as typeof fetch;
 
     const res = mockRes();
-    await runWithCtx(() => proxyHandler(req(), res, () => undefined));
+    await runWithCtx(() => {
+      proxyHandler(req(), res, () => undefined);
+    });
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toBe('{"ok":true}');
@@ -138,7 +146,9 @@ describe('gateway proxyHandler resilience (W2-04)', () => {
   it('404s an unknown route segment via next(err)', async () => {
     const next = jest.fn();
     const res = mockRes();
-    await runWithCtx(() => proxyHandler(req('/nope/v1/x'), res, next));
+    await runWithCtx(() => {
+      proxyHandler(req('/nope/v1/x'), res, next);
+    });
     expect(next).toHaveBeenCalledTimes(1);
   });
 });

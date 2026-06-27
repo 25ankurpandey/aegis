@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Aegis — bring the WHOLE platform up locally in one command.
-# Builds every service image, starts dockerized Postgres (with RLS app role) + Redis,
+# Builds every per-service image, starts dockerized Postgres (with RLS app role) + Redis + Kafka,
 # runs all services wired on one Docker network, applies migrations. No manual env needed.
 set -euo pipefail
 cd "$(dirname "$0")/.."

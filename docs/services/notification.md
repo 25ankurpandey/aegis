@@ -59,6 +59,140 @@ the entire point of the section below on ambient authority (§6).
 
 ---
 
+## Local Development
+
+Everything below is for an engineer who wants to **run and extend this service** on their
+own machine. notification is a stock Nx app: an `@nx/js:node` `serve` target over the
+`@nx/webpack:webpack` `build`. The one trap is that the committed
+[`apps/notification/.env`](../../apps/notification/.env) is written for the **docker
+network** (compose-service hostnames), so running outside Docker requires a host-port
+rewrite — see step 3.
+
+### Prerequisites
+
+- **Node 22 + npm** (the repo pins Node 22; webpack/tsc build targets assume it).
+- **Docker** (Desktop or Colima) for the infra — Postgres, Redis, Kafka.
+- From the **repo root**, install the workspace once: `npm ci`.
+
+### 1. Bring up the infra it needs (Postgres + Redis + Kafka)
+
+notification talks to **Postgres** (its two tenant-scoped tables under RLS), **Redis**
+(cache only), and **Kafka** (the event bus it consumes on the worker write-path). Two ways
+to stand those up:
+
+- **(a) Whole stack** — `bash scripts/setup.sh` builds the images, starts every default
+  service (including the other Aegis services notification calls), waits for Postgres, and
+  runs the one-shot `migrate` container (migrations **then** seeders). Develop your local
+  `nx serve` against that already-running stack. This is the option to pick if you want
+  user-management reachable for recipient resolution / JWKS (see Runtime dependencies).
+- **(b) Just infra** — start only the backing stores and run migrations once:
+
+  ```bash
+  docker compose -f docker-compose.all.yml up -d postgres redis kafka
+  docker compose -f docker-compose.all.yml run --rm migrate   # migrations + seeders (idempotent)
+  ```
+
+  The `migrate` one-shot is idempotent, so re-running it is safe.
+
+### 2. Run THIS service locally with hot-reload
+
+```bash
+npx nx serve notification          # @nx/js:node — rebuilds + restarts on change
+```
+
+> **CRITICAL GOTCHA — the committed `.env` uses docker-network hostnames.**
+> [`apps/notification/.env`](../../apps/notification/.env) points at compose-service names
+> (`postgres:5432`, `redis:6379`, `kafka:9092`) and inter-service URLs by hostname
+> (`user-management:4001`, `gateway:4000`, …). **None of those resolve from your host** when
+> you run `nx serve` outside the docker network — the process will fail to reach the DB / bus
+> / sibling services. For local dev, override them to the docker-**published host ports**
+> (e.g. via a local `.env.local`, exported shell vars, or `AEGIS_ENV_FILE` pointing at an
+> override file — `loadServiceEnv` honours it):
+
+```bash
+DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+REDIS_URL=redis://127.0.0.1:6379
+KAFKA_BROKERS=127.0.0.1:9092
+JWKS_URL=http://127.0.0.1:4001/.well-known/jwks.json
+GATEWAY_URL=http://127.0.0.1:4000
+USER_MANAGEMENT_URL=http://127.0.0.1:4001     # recipient resolution + JWKS issuer
+EXPENSE_URL=http://127.0.0.1:4002
+PAYROLL_URL=http://127.0.0.1:4003
+REPORTING_URL=http://127.0.0.1:4004
+WORKFLOW_URL=http://127.0.0.1:4005
+NOTIFICATION_URL=http://127.0.0.1:4006
+INVOICE_URL=http://127.0.0.1:4007
+```
+
+The vars from this service's `.env` that **must** be rewritten to `127.0.0.1` for local
+`nx serve` are: **`DATABASE_URL`**, **`REDIS_URL`**, **`KAFKA_BROKERS`**, **`JWKS_URL`**,
+**`GATEWAY_URL`**, **`USER_MANAGEMENT_URL`**, **`EXPENSE_URL`**, **`PAYROLL_URL`**,
+**`REPORTING_URL`**, **`WORKFLOW_URL`**, **`NOTIFICATION_URL`**, **`INVOICE_URL`**. The
+non-host vars (`PORT`, `PROCESS_TYPE`, `AUTH_JWT_SECRET`, `INTERNAL_JWT_SECRET`,
+`INTERNAL_ORIGIN`, `FIELD_ENCRYPTION_KEY`, etc.) work as committed.
+
+In practice notification's hot path only needs `DATABASE_URL`, `REDIS_URL`,
+`USER_MANAGEMENT_URL` + `JWKS_URL` (inbox API), and `KAFKA_BROKERS` (worker role); the other
+service URLs are present so the shared `HttpClient` can resolve any sibling it is asked to
+call.
+
+### 3. Port + health check
+
+This service listens on **`PORT=4006`** (the `api` role; `Config.int('PORT', 4006)` in
+`bootstrap.ts`). Verify it is up:
+
+```bash
+curl localhost:4006/health        # /health is excluded from the context/auth band
+```
+
+In normal platform use you do **not** hit `4006` directly — clients go **through the
+gateway**:
+
+```
+http://localhost:4000/notification/v1/notifications
+```
+
+The gateway forwards to this service, which **re-validates auth via its own PEP** (each
+service is its own policy-enforcement point; the gateway does not terminate authz).
+
+### 4. Runtime dependencies
+
+What this service actually calls at runtime (state them when wiring local infra):
+
+- **Postgres** — `notifications` + `email_notification_logs`, tenant-scoped under RLS; the
+  app DB role is a **non-owner without `BYPASSRLS`** (`DATABASE_URL`).
+- **Redis** — cache only (`REDIS_URL`).
+- **Kafka** — the event bus (`@aegis/events`). **Only the worker role** (`PROCESS_TYPE=worker`)
+  connects a `KafkaBus` and consumes the already-authorized domain topics (§8); a worker
+  `requireAll(['DATABASE_URL','AUTH_JWT_SECRET','KAFKA_BROKERS'])`. The default `api` role
+  serves the inbox HTTP surface and does **not** consume events. Run a second process with
+  `PROCESS_TYPE=worker` to exercise the consume path.
+- **user-management** — token validation pulls **JWKS** (`JWKS_URL` →
+  `user-management:4001/.well-known/jwks.json`), and **recipient resolution** calls its
+  internal service-to-service directory via the shared `HttpClient`
+  (`USER_MANAGEMENT_URL` → `GET /user-management/internal/users/:id/contact` and
+  `GET /user-management/internal/recipients`), guarded by the internal JWT/origin lane (§1).
+- **Producing services** (expense, payroll, invoice, reporting, workflow) — notification does
+  not call them synchronously; it **consumes their topics** off Kafka. Their `*_URL` vars are
+  configured only so the generic `HttpClient` can address any of them if needed.
+- **Email/SMS providers** — no creds in this repo. The SMTP/SMS adapters read
+  `SMTP_*` / `EMAIL_*` env (all unset in the dummy `.env`, so sends are inert locally); real
+  delivery is key-proxy-brokered (§1, §5). Recipient/domain gating reads `EMAIL_ALLOW_DOMAINS`
+  / `EMAIL_DENY_DOMAINS` / `EMAIL_ENV`.
+
+### 5. Test + build
+
+```bash
+npx nx test notification          # @nx/jest:jest — incl. the idempotent-send unit tests (§5)
+npx nx build notification         # @nx/webpack:webpack, production config — runs the prod tsc type-check
+```
+
+`nx build` uses the `production` configuration and compiles with `tsc`, so it doubles as the
+**production type-check** — the discriminated-union renderer coverage (§4) and message-shape
+guarantees (§3) fail the build if a `NotificationCode` is added without a renderer.
+
+---
+
 ## 2. Data model (recap)
 
 The authoritative ER definition lives in

@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet, httpPost, httpPut } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission, ConnectorKind } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
 import type { WorkflowShape } from '@aegis/shared-types';
@@ -33,7 +33,7 @@ export class ConnectorController {
     validate(upsertConnectorConfigSchema),
   )
   async upsertConfig(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.connectors.upsertConfig(req.params['kind'] as ConnectorKind, req.body));
+    res.status(200).json(await this.connectors.upsertConfig(routeParam(req, 'kind') as ConnectorKind, req.body));
   }
 
   @httpGet(
@@ -53,7 +53,7 @@ export class ConnectorController {
     validate(syncStateParamSchema, 'params'),
   )
   async getSyncState(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.connectors.getSyncState(req.params['idempotencyKey']) });
+    res.status(200).json({ data: await this.connectors.getSyncState(routeParam(req, 'idempotencyKey')) });
   }
 
   @httpPost(
@@ -73,6 +73,6 @@ export class ConnectorController {
     validate(connectorKindParamSchema, 'params'),
   )
   async health(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.connectors.health(req.params['kind'] as ConnectorKind) });
+    res.status(200).json({ data: await this.connectors.health(routeParam(req, 'kind') as ConnectorKind) });
   }
 }

@@ -52,9 +52,11 @@ kept). It:
 
 1. **Preflights Docker** — verifies `docker`, `docker compose version`, and a running daemon
    (`docker info`); exits non-zero with an install pointer if any is missing.
-2. **Builds the single image** and brings the whole stack up on one Docker network
-   (`docker compose -f docker-compose.all.yml up -d --build`). One image serves every role via
-   `PROCESS_TYPE` (api / worker / migration) — see [`../../Dockerfile`](../../Dockerfile) and
+2. **Builds per-service images** and brings the whole stack up on one Docker network
+   (`docker compose -f docker-compose.all.yml up -d --build`). Each API service has its own image tag
+   built from [`../../Dockerfile.service`](../../Dockerfile.service); workers reuse their owning
+   service image with `PROCESS_TYPE=worker`, and the CLI image runs migrations with
+   `PROCESS_TYPE=migration` — see [`../../Dockerfile.service`](../../Dockerfile.service) and
    [`../../scripts/start.sh`](../../scripts/start.sh).
 3. **Waits for Postgres**, then runs the one-shot **migrate** container
    (`PROCESS_TYPE=migration` → migrations **then** seeders; both idempotent).
@@ -67,6 +69,7 @@ kept). It:
 | Component | Where |
 |---|---|
 | **Gateway** (single entry point) | `http://localhost:4000` |
+| **Live API docs** (interactive Swagger UI) | `http://localhost:4000/api-docs` (raw spec: `/api-docs.json`) |
 | user-management | `http://localhost:4001` |
 | expense | `http://localhost:4002` |
 | payroll | `http://localhost:4003` |
@@ -76,9 +79,16 @@ kept). It:
 | invoice | `http://localhost:4007` |
 | **Kafka workers** (no HTTP port) | `workflow-worker`, `notification-worker` |
 | Infra | Postgres `:5432`, Redis `:6379`, Kafka `:9092` |
+| **Logs + analytics dashboard** | `http://127.0.0.1:4010` when Node.js is available |
 
 > `scripts/dev-up.sh` is a thinner equivalent (build + up + migrate, no health gate) used by the live
 > E2E harness. Prefer `setup.sh` for a guided bring-up.
+
+`setup.sh` starts `scripts/log-dashboard.js` automatically when `node` is on PATH. The dashboard is
+browser-based: it divides logs by service, streams new lines in real time, and has an Analytics tab
+for health, request counts, warning/error totals, and latency summaries. If Node.js is not installed,
+the Dockerized stack still starts; use `docker compose -f docker-compose.all.yml logs -f --tail=100`
+as the fallback.
 
 ### Confirm health
 
@@ -120,6 +130,15 @@ cross-tenant RLS isolation is push-button.
 ## 3. Three ways to test
 
 Pick the depth you need. (a) needs only Node; (b) and (c) need the dockerized stack from §2.
+
+For the push-button reviewer path, run:
+
+```bash
+bash scripts/test-dockerized.sh
+```
+
+It runs `setup.sh`, prints the dashboard URL, then executes the predefined HTTP flow assertions from
+a disposable Node container on the Compose network.
 
 ### (a) Automated unit + integration — no Docker
 
@@ -200,7 +219,11 @@ into `{{token}}`), then run the requests top-to-bottom.
 
 **curl:** follow [`CURL_EXAMPLES.md`](./CURL_EXAMPLES.md) (copy-paste, in order). Needs `curl` + `jq`.
 
-**API reference** while you poke around: the numbered docs in [`../`](../) (e.g.
+**API reference** while you poke around: the **interactive Swagger UI** at
+<http://localhost:4000/api-docs> (served by the gateway once the stack is up — use the **Authorize**
+button to paste a Bearer JWT; it persists across requests, and "Try it out" targets the gateway at
+`http://localhost:4000`). The raw spec is at `/api-docs.json`. Offline, the same spec renders via the
+static viewer [`../api/index.html`](../api/index.html). Also the numbered docs in [`../`](../) (e.g.
 [`05-authn-authz-flow.md`](../05-authn-authz-flow.md), [`08-api-conventions.md`](../08-api-conventions.md))
 and the per-service contracts under [`../services/`](../services/).
 
@@ -317,7 +340,7 @@ With no env set, `npx jest apps/e2e-tests/live` runs **0 specs** (all skipped) �
 | A service never reports healthy (timeout) | `setup.sh` dumps the last log lines on timeout. Inspect: `docker compose -f docker-compose.all.yml logs --tail 80 <service>`. Re-running `setup.sh` is safe (it reconciles and retries). |
 | Port already in use (4000–4007, 5432, 6379, 9092) | Another process owns the port. Find it (`lsof -i :4000`) and stop it, or stop the conflicting stack, then re-run. |
 | `Postgres did not become ready within 120s` | Low resources or a stuck container. `docker compose -f docker-compose.all.yml logs postgres`; bump the budget via `AEGIS_HEALTH_TIMEOUT=300 bash scripts/setup.sh`. |
-| Migrations/seeders look missing | They are idempotent and re-applied on every `setup.sh`. Verify: `docker compose -f docker-compose.all.yml run --rm -e PROCESS_TYPE=migration migrate` (expects the current `0001..0026` migration set in `apps/cli/src/migrations/` and seeders `0001..0006`). |
+| Migrations/seeders look missing | They are idempotent and re-applied on every `setup.sh`. Verify: `docker compose -f docker-compose.all.yml run --rm -e PROCESS_TYPE=migration migrate` (expects the current `0031` migration set in `apps/cli/src/migrations/` and seeders through `0007_rbac_catalog_reconcile`). |
 | `401`/`403` on a request that should pass | Missing/expired JWT, or missing/mismatched `x-tenant-id`. A tenant-A token with a tenant-B header is **supposed** to 403 (defense-in-depth PEP). Re-login (`CURL_EXAMPLES.md §1`). |
 | `npx jest apps/e2e-tests/live` runs 0 tests | Expected without `E2E_BASE_URL`. Set it (and `E2E_DATABASE_URL` for the audit-chain spec) — see §6. |
 | `npx jest` fails to resolve deps | Run `npm ci` at the repo root once. |

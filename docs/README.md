@@ -41,8 +41,8 @@ The system broken into focused deep-dives, each traced to real code.
 - [`architecture/code-ownership.md`](architecture/code-ownership.md) — where a given model, table,
   interface, or DTO lives (and the rule that decides).
 - [`architecture/process-management.md`](architecture/process-management.md) — the process model:
-  the single multi-purpose image + `PROCESS_TYPE` entrypoint switch, and the PM2-vs-current
-  production-runtime decision.
+  per-service images + `PROCESS_TYPE` entrypoint switch, independent service/worker scaling, and the
+  PM2-vs-container-runtime decision.
 
 ---
 
@@ -78,10 +78,8 @@ highlights.
   [`api/openapi.yaml`](api/openapi.yaml) (no external network dependency). Source of truth is the
   Aegis controllers + Joi validators.
 - [`api/openapi.yaml`](api/openapi.yaml) — the OpenAPI 3.0 spec for all `/{service}/v1/...` routes.
-- **Live `/api-docs`** — each service reserves a `/api-docs` path that bypasses the context
-  middleware so a Swagger UI can be served per-service from the running stack. Serving the live UI
-  from the spec is a remaining item (see [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md));
-  until then use the offline `api/index.html` above.
+- **Live `/api-docs`** — the gateway serves Swagger UI at <http://localhost:4000/api-docs> and the
+  raw OpenAPI document at <http://localhost:4000/api-docs.json> once the stack is running.
 - [`postman/Aegis.postman_collection.json`](postman/Aegis.postman_collection.json) — importable
   Postman collection hitting every flow through the gateway.
 
@@ -124,6 +122,9 @@ The conceptual deep-dives (the numbered `0N-*.md` chapters) plus cross-cutting r
   organization.
 - [`03-access-control-model.md`](03-access-control-model.md) — the heart of Aegis: RBAC core + ABAC
   conditions + row-level scope; PDP/PEP/PAP/PIP; dotted `domain.action` permissions; dynamic roles.
+- [`access-control-matrix.md`](access-control-matrix.md) — the **who-can-do-what** reference: all 11
+  system roles × 57 permissions as a verified grant matrix (Owner/Admin = full catalog; Manager,
+  Approver, Contributor, Viewer, PayrollAdmin/Approver, FinanceDisburser, Auditor, Employee scoped).
 - [`04-multi-tenancy.md`](04-multi-tenancy.md) — database-enforced tenant isolation: shared-DB
   pooled model, mandatory `tenant_id`, Postgres RLS (`FORCE` + `RESTRICTIVE`, non-owner role,
   `SET LOCAL app.current_tenant`).
@@ -155,7 +156,7 @@ The conceptual deep-dives (the numbered `0N-*.md` chapters) plus cross-cutting r
 - [`../SPEC.md`](../SPEC.md) — the authoritative specification and source of truth (including §10
   Amendments). Where any doc disagrees, `SPEC.md` wins.
 - [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) — the living build tracker: what is done,
-  what remains (Docker-gated live E2E + live Swagger serving), and the decision log.
+  what remains (final Dockerized acceptance pass + scheduled bug-hunting automation), and the decision log.
 - [`../HANDOFF.md`](../HANDOFF.md) — the handoff: current state, how to stand the stack up, and what
   is Docker-gated.
 - [`../AGENTS.md`](../AGENTS.md) — conventions and provenance rules for contributors and agents.

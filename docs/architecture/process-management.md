@@ -1,7 +1,7 @@
 # Process Management & Deployment Model
 
 **Question (from the owner):** *Would PM2 be a better production approach than our current
-single-image + `PROCESS_TYPE` + one-container-per-role model?*
+per-service image + `PROCESS_TYPE` + one-container-per-role model?*
 
 **Short answer:**
 
@@ -16,8 +16,8 @@ single-image + `PROCESS_TYPE` + one-container-per-role model?*
 
 ## 1. What we run today
 
-The whole Nx monorepo builds into **one Docker image** (`Dockerfile`). The runtime role is selected
-by env at container start (`scripts/start.sh`):
+The Nx monorepo builds **one image per deployable service** via `Dockerfile.service`. The runtime
+role is selected by env at container start (`scripts/start.sh`):
 
 | `PROCESS_TYPE` | Behavior | Source |
 |---|---|---|
@@ -25,7 +25,7 @@ by env at container start (`scripts/start.sh`):
 | `worker` | Same bundle; `bootstrap.ts` forks on `PROCESS_TYPE=worker` to swap in the Kafka transport, register consumers, and run them (no HTTP listener) | `scripts/start.sh`, `apps/workflow/src/bootstrap.ts`, `apps/expense/src/bootstrap.ts` |
 | `migration` | Run Umzug migrations + seeders, then exit (one-shot) | `scripts/start.sh` → `apps/cli/src/main.js` |
 
-`docker-compose.all.yml` instantiates that one image once per role:
+`docker-compose.all.yml` instantiates one image per service and one container per role:
 
 - **8 HTTP (`api`) roles:** `gateway` (4000), `user-management` (4001), `expense` (4002),
   `payroll` (4003), `reporting` (4004), `workflow` (4005), `notification` (4006), `invoice` (4007).
@@ -46,8 +46,8 @@ Each role is a single Node process. `tini` is PID 1 in the container (`ENTRYPOIN
 shutdown (`libs/service-core/src/bootstrap/shutdown.ts`, `startServer` / `installSignalHandlers`)
 that drains in-flight work, then tears down relay → cache → bus → DB.
 
-This follows an established pattern (the domain reference and the service-template reference do the same: one image, role by
-env, one process per container, orchestrator as supervisor).
+The important invariant is **one process per container, orchestrator as supervisor, and independent
+service/worker scaling**.
 
 ---
 

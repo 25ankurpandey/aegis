@@ -3,7 +3,7 @@
 > This file is the authoritative spec for the Aegis platform. Every other document
 > (`AGENTS.md`, `IMPLEMENTATION_PLAN.md`, `docs/**`) and every agent MUST be consistent
 > with this file. If a decision conflicts, **this file wins** — update it deliberately,
-> then propagate. Last updated: 2026-06-25.
+> then propagate. Last updated: 2026-06-27.
 
 ---
 
@@ -44,7 +44,7 @@ Use only the `@aegis/*` scope and Aegis domain names. The codebase MUST NOT refe
 | **Enums & types** | **domain-reference pattern** — flat `@aegis/shared-enums` (one `<domain>.enum.ts` + barrel, `*Display` map idiom), `@aegis/shared-types` `<domain>.shape.ts` namespaces, centralized `HttpHeaderKey` + table-name enums | Established, well-organized pattern. |
 | **Constants** | **service-template-reference pattern** — per-area `Constants` classes in `@aegis/shared-constants` | Established, single-source pattern. |
 | **Migrations** | **Umzug code-first** numbered migrations (`NNNN_subject.ts` with `{name, up, down}`), run as a one-shot task; **NOT** `sequelize.sync()` | The domain reference's approach is production-grade; the architecture reference's runtime sync is unsafe. |
-| **Deployment** | **domain-reference model** — single multi-purpose Docker image + `PROCESS_TYPE` (api/worker/migration) entrypoint switch, immutable SHA-image promotion, runtime secrets from a param store, DRY CI with YAML anchors | Confirmed superior for a multi-service platform; de-branded. |
+| **Deployment** | **Per-service Docker images from one monorepo** + `PROCESS_TYPE` (api/worker/migration) entrypoint switch. Each API/worker is a separate container and scale unit; workers reuse their owning service image. Runtime secrets from a param store; DRY CI with YAML anchors | Preserves monorepo/shared-lib consistency while making the runtime topology unmistakably microservices and independently scalable. |
 | **Event bus** | Abstracted `@aegis/events` publish/consume registry (topic enum → handler), inline-when-sync / queue-when-async toggle; transactional outbox semantics | Follows the domain reference's PublishMap/consumer pattern; transport-swappable (Redis/SQS/Kafka). |
 | **Audit** | Hybrid — generic append-only **activity feed** + per-domain audit tables; **hash-chained** tamper-evident entries; capture actor, tenant, intent, decision, permissions-at-time-of-action | Domain-reference pattern + SOC2/GDPR best practice. |
 | **Service-to-service** | Request-context header propagation (`X-Tenant-Id`, `X-Caller`, correlation/trace id, entry-context) per the architecture reference + signed internal JWT (issuer/audience/exp) gated by an origin header + a propagated source-service header; mTLS-ready | Best of both references + closes the ambient-authority gap. |
@@ -118,8 +118,8 @@ aegis/
 │   └── testing/           # Test utils: context stubs, PDP stubs, fixtures
 │
 ├── docs/                  # Architecture, patterns, model, multi-tenancy, s2s, deployment, per-service, interactive HTML
-├── scripts/start.sh       # PROCESS_TYPE switch: api | worker | migration
-├── Dockerfile             # single multi-purpose image
+├── scripts/start.sh       # PROCESS_TYPE switch inside each service image: api | worker | migration
+├── Dockerfile.service     # per-service image builder
 ├── docker-compose.yml     # local: postgres + redis (+ services)
 ├── .gitlab-ci.yml         # DRY anchors, build-once SHA image + promote, deploy fan-out
 ├── nx.json tsconfig.base.json package.json
@@ -155,7 +155,7 @@ src/
 - **Eventing**: abstracted bus; default transport Redis streams / BullMQ locally, SQS/SNS or Kafka in prod.
 - **Observability**: OpenTelemetry (traces/metrics/logs), structured logging (pino), health endpoints.
 - **Testing**: Jest (+ ts-jest); supertest for HTTP; per-lib unit tests; coverage gates.
-- **Build/deploy**: Nx (affected builds + cache), Docker multi-stage single image, GitLab CI, ECS/K8s target.
+- **Build/deploy**: Nx (affected builds + cache), Docker multi-stage per-service images, GitLab CI, ECS/K8s target.
 
 ---
 
@@ -193,9 +193,9 @@ All tenant-scoped tables: `tenant_id NOT NULL` + RLS.
 
 ## 7. Deployment & ops (de-branded domain-reference model)
 
-- **One image, many roles**: `Dockerfile` builds the whole monorepo `dist/`; `scripts/start.sh` switches on `PROCESS_TYPE` → `api` (the selected `SERVICE_NAME` app), `worker`, or `migration`.
-- **Immutable SHA images**: build once, tag `:$GIT_SHA`, promote across envs by re-tagging (no rebuild).
-- **Migrations as a one-shot task** using the same image (`PROCESS_TYPE=migration`).
+- **Per-service images, separate scale units**: `Dockerfile.service` builds `aegis/<service>:$GIT_SHA`; `scripts/start.sh` switches on `PROCESS_TYPE` → `api`, `worker`, or `migration` inside that service image.
+- **Immutable SHA images**: build each affected service once, tag `:$GIT_SHA`, promote across envs by re-tagging (no rebuild).
+- **Migrations as a one-shot task** using the CLI image (`PROCESS_TYPE=migration`).
 - **Runtime secrets** from a parameter store keyed by env prefix (`/aegis/<env>/...`); no secrets in images/CI.
 - **CI**: DRY GitLab CI with YAML anchors; `nx affected` gating; lint+test → build → promote → deploy.
 - **Health**: `/health` (+ `?details=true`) probing DB + cache + bus; liveness/readiness; readiness gates traffic until deps are ready (improvement over the reference which listened early).

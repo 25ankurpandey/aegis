@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpDelete, httpGet, httpPatch, httpPost } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { ApiConstants } from '@aegis/shared-constants';
 import { Permission } from '@aegis/shared-enums';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -31,11 +31,11 @@ export class PolicyController {
     validate(updatePolicySchema),
   )
   async update(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.policies.update(req.params['id'], req.body) });
+    res.status(200).json({ data: await this.policies.update(routeParam(req, 'id'), req.body) });
   }
 
   @httpDelete('/policies/:id', authenticate(), authorize(Permission.PolicyManage), validate(idParamSchema, 'params'))
   async delete(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.policies.delete(req.params['id']));
+    res.status(200).json(await this.policies.delete(routeParam(req, 'id')));
   }
 }

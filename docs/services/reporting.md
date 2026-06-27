@@ -59,6 +59,119 @@ What `reporting` explicitly does **not** do:
 
 ---
 
+## Local Development
+
+For an engineer extending **this** service. `reporting` is the read side: it
+binds Postgres (read model + control tables), Redis (result cache), and may call
+peer services over HTTP — but it does **not** connect to Kafka and runs no worker
+(`bootstrap.ts`: *"read-mostly and does not publish, so there is no event bus to
+stop"*). It serves HTTP on **port 4004**.
+
+### Prerequisites
+
+- **Node 22** + **npm**, and **Docker** (for the infra it depends on).
+- From the repo root: `npm ci` (installs the Nx workspace once).
+
+### Bring up the infra
+
+`reporting` needs **Postgres** and **Redis** at minimum (the migrate step also
+spins **Kafka**, which the broader stack uses — `reporting` itself never dials
+it). Two options:
+
+- **(a) Whole stack**, then develop against it:
+
+  ```bash
+  bash scripts/setup.sh
+  ```
+
+- **(b) Just the infra** you need, then run migrations once:
+
+  ```bash
+  docker compose -f docker-compose.all.yml up -d postgres redis kafka
+  docker compose -f docker-compose.all.yml run --rm migrate
+  ```
+
+Both publish the container ports to the host: Postgres `5432`, Redis `6379`,
+Kafka `9092`.
+
+### Run this service with hot-reload
+
+```bash
+npx nx serve reporting
+```
+
+`serve` uses the `@nx/js:node` executor against the `reporting:build` output, so
+saves rebuild and restart.
+
+> **Gotcha — the committed `apps/reporting/.env` uses Docker-network hostnames.**
+> Values like `postgres:5432`, `redis:6379`, `kafka:9092`, and inter-service URLs
+> such as `http://user-management:4001` / `http://gateway:4000` only resolve
+> *inside* the compose network. When you run `nx serve` on the host, those names
+> do not resolve — point them at the docker-published host ports instead (a local
+> env override that your shell/`.env.local` layers on top of the committed file):
+>
+> ```bash
+> DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+> REDIS_URL=redis://127.0.0.1:6379
+> # inter-service URLs reporting may call via @aegis/service-core's http-client:
+> GATEWAY_URL=http://127.0.0.1:4000
+> USER_MANAGEMENT_URL=http://127.0.0.1:4001
+> EXPENSE_URL=http://127.0.0.1:4002
+> PAYROLL_URL=http://127.0.0.1:4003
+> REPORTING_URL=http://127.0.0.1:4004
+> WORKFLOW_URL=http://127.0.0.1:4005
+> NOTIFICATION_URL=http://127.0.0.1:4006
+> INVOICE_URL=http://127.0.0.1:4007
+> ```
+>
+> The vars **this** service actually reads that need the localhost rewrite are:
+> `DATABASE_URL`, `REDIS_URL`, and the inter-service `*_URL` entries above (only
+> the peers you actually exercise need to be reachable). `KAFKA_BROKERS` does
+> **not** need rewriting — `reporting` never connects to Kafka. `JWKS_URL` is a
+> documented seam; the demo PEP validates the user token with the shared
+> `AUTH_JWT_SECRET` (HS256), so token verification works against the committed
+> dummy secret without a running user-management.
+
+### Verify it's up
+
+```bash
+curl localhost:4004/health
+```
+
+`/health` is excluded from the context/auth band, so it answers without a token.
+In normal use the service is reached **through the gateway** —
+`http://localhost:4000/reporting/v1/...` — and each service re-validates auth via
+its own PEP, so a direct `:4004` call still requires a valid bearer token on the
+`/v1/*` routes.
+
+### Runtime dependencies
+
+- **Postgres** (`DATABASE_URL`, **required** per `bootstrap.ts` — read model +
+  `report_definitions`/`report_schedules`/`report_runs`/`report_access_policies`,
+  all RLS-guarded; connects as the non-owner `aegis_app` role).
+- **Redis** (`REDIS_URL`) — the access-scope-keyed result cache (`CacheAdapter`).
+- **user-management** — only as the **token-issuing authority**; the PEP verifies
+  the user JWT with `AUTH_JWT_SECRET` locally (HS256), and `JWKS_URL` is reserved
+  for the asymmetric/JWKS path. No live call is required to validate a token.
+- **Peer services** over HTTP via the `@aegis/service-core` http-client (signed
+  internal token + origin gate) for any cross-service enrichment.
+- **No Kafka, no worker.** `PROCESS_TYPE=api` only; the read model is populated
+  from events in the production design, but this service neither produces nor
+  consumes topics at runtime today (the async run path is the BullMQ/worker
+  upgrade seam, not wired here).
+
+### Test & build
+
+```bash
+npx nx test reporting     # Jest unit tests
+npx nx build reporting    # production build — runs the prod type-check (tsc)
+```
+
+`build` uses the `@nx/webpack:webpack` executor with `compiler: 'tsc'`, so a
+production build fails on type errors — run it before pushing.
+
+---
+
 ## 2. CQRS-lite — and the explicit graduation trigger
 
 Aegis adopts **CQRS-lite**, not full CQRS. We do not split the *write* side of

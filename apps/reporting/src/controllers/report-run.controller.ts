@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpDelete, httpGet, httpPatch, httpPost } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
 import { ReportingShape } from '@aegis/shared-types';
@@ -50,7 +50,7 @@ export class ReportRunController {
     validate(idParamSchema, 'params'),
   )
   async getRun(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.reporting.getRun(req.params['id']) });
+    res.status(200).json({ data: await this.reporting.getRun(routeParam(req, 'id')) });
   }
 
   @httpGet(
@@ -60,7 +60,7 @@ export class ReportRunController {
     validate(idParamSchema, 'params'),
   )
   async getRunExport(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.reporting.getRunExport(req.params['id']) });
+    res.status(200).json({ data: await this.reporting.getRunExport(routeParam(req, 'id')) });
   }
 
   @httpPost(
@@ -93,7 +93,7 @@ export class ReportRunController {
     validate(updateScheduleSchema),
   )
   async updateSchedule(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.reporting.updateSchedule(req.params['id'], req.body) });
+    res.status(200).json({ data: await this.reporting.updateSchedule(routeParam(req, 'id'), req.body) });
   }
 
   @httpDelete(
@@ -103,6 +103,6 @@ export class ReportRunController {
     validate(idParamSchema, 'params'),
   )
   async deleteSchedule(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.reporting.deleteSchedule(req.params['id']) });
+    res.status(200).json({ data: await this.reporting.deleteSchedule(routeParam(req, 'id')) });
   }
 }

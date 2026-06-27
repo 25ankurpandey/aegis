@@ -80,6 +80,123 @@ every write (see [`02-patterns.md`](../02-patterns.md)).
 
 ---
 
+## Local Development
+
+How to run, extend, and test **this** service on your machine. Invoice listens on
+**HTTP port 4007** and is wired through the Nx `serve`/`build`/`test` targets in
+[`apps/invoice/project.json`](../../apps/invoice/project.json).
+
+### Prerequisites
+
+- **Node 22 + npm**, **Docker** (for the Postgres/Redis/Kafka infra).
+- Install the workspace once from the **repo root**: `npm ci`.
+
+### 1. Bring up the infra (Postgres + Redis + Kafka)
+
+Invoice needs Postgres (RLS-scoped data + the casbin policy store), Redis (cache +
+policy-watcher), and Kafka (event bus / outbox relay). Two ways to get there:
+
+**(a) Whole stack** — build every service image and start everything, then develop
+against it:
+
+```bash
+bash scripts/setup.sh
+```
+
+**(b) Just the infra** — leave the app containers down and run only invoice from your
+shell:
+
+```bash
+docker compose -f docker-compose.all.yml up -d postgres redis kafka
+# run the schema/seed migrations once against the fresh DB:
+docker compose -f docker-compose.all.yml run --rm migrate
+```
+
+### 2. Run this service with hot-reload
+
+```bash
+npx nx serve invoice
+```
+
+The `serve` target uses the `@nx/js:node` executor over `invoice:build`, so it rebuilds
+and restarts on source changes.
+
+> **CRITICAL GOTCHA — the committed `.env` uses Docker-network hostnames.**
+> [`apps/invoice/.env`](../../apps/invoice/.env) points at compose **service names**
+> (`postgres:5432`, `redis:6379`, `kafka:9092`, `user-management:4001`, `gateway:4000`,
+> …). Those names only resolve **inside** the docker network. When you run `nx serve`
+> from your host they will not resolve and the service fails to connect. For local runs,
+> override them to the docker-**published host ports** on `127.0.0.1` (e.g. a local
+> `.env.local` / shell exports / your run config):
+>
+> ```bash
+> DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+> REDIS_URL=redis://127.0.0.1:6379
+> KAFKA_BROKERS=127.0.0.1:9092
+> GATEWAY_URL=http://127.0.0.1:4000
+> USER_MANAGEMENT_URL=http://127.0.0.1:4001
+> # …and any other inter-service URL you actually call, rewritten host:port:
+> # EXPENSE_URL / PAYROLL_URL / REPORTING_URL / WORKFLOW_URL /
+> # NOTIFICATION_URL / INVOICE_URL / JWKS_URL → http://127.0.0.1:<port>
+> ```
+>
+> **Vars in this service's `.env` that need the localhost rewrite** (every value that is
+> a docker hostname): `DATABASE_URL`, `REDIS_URL`, `KAFKA_BROKERS`, `JWKS_URL`,
+> `GATEWAY_URL`, `USER_MANAGEMENT_URL`, `EXPENSE_URL`, `PAYROLL_URL`, `REPORTING_URL`,
+> `WORKFLOW_URL`, `NOTIFICATION_URL`, `INVOICE_URL`. The non-URL vars (`PORT`,
+> `AUTH_JWT_SECRET`, `INTERNAL_JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, `*_ENV`,
+> `PROCESS_TYPE`, etc.) work as committed.
+
+### 3. Verify it's up
+
+The service exposes a health endpoint on its own port:
+
+```bash
+curl localhost:4007/health
+```
+
+In normal use you don't hit `:4007` directly — traffic comes **through the gateway** at
+`http://localhost:4000/invoice/v1/...`, and invoice still re-validates the caller via its
+own PEP ([§9](#9-access-control)). The direct port is for local dev / health checks.
+
+### 4. Runtime dependencies
+
+What invoice talks to at runtime (drives what must be up locally):
+
+- **Postgres** (`DATABASE_URL`, required) — domain tables + RLS, and the casbin policy
+  store read by `@aegis/access-control`.
+- **Redis** (`REDIS_URL`) — cache adapter + the access-control policy watcher.
+- **Kafka** (`KAFKA_BROKERS`) — the `@aegis/events` bus. When `KAFKA_BROKERS` is **unset**
+  the lib falls back to an **in-process bus** (single-process dev works with no broker);
+  when set, the in-process outbox relay drains staged events to Kafka.
+- **Token validation** — the PEP verifies the bearer JWT with the shared **HS256
+  `AUTH_JWT_SECRET`** (`AUTH_JWT_SECRET` is `requireAll`'d at startup). `JWKS_URL` /
+  user-management is the token issuer in the platform topology.
+- **Inter-service HTTP** — via `@aegis/service-core`'s typed http-client, resolved from
+  the `*_URL` env vars (gateway, user-management, expense, payroll, reporting, workflow,
+  notification).
+- **ERP connectors** — `registerBuiltinConnectors()` from
+  [`@aegis/connectors`](../../libs/connectors) wires the **mock** ERP targets
+  (`LedgerOne` / `Finovo` / `AcctBridge`); no real ERP is contacted locally ([§7](#7-erp-push-via-aegisconnectors)).
+
+**Worker role.** `PROCESS_TYPE=worker` (vs the default `api`) starts the **consumer-only**
+half (no HTTP server): it `requireAll(['DATABASE_URL','AUTH_JWT_SECRET','KAFKA_BROKERS'])`
+and registers the `ApprovalCompleted` consumer (stranded-record recovery) and the
+`RecordUpdated` consumer (`assign_team` / `add_tag`). A worker **must** have a real Kafka
+broker. See [`bootstrap.ts`](../../apps/invoice/src/bootstrap.ts).
+
+### 5. Test + build
+
+```bash
+npx nx test invoice    # Jest (apps/invoice/jest.config.ts)
+npx nx build invoice   # @nx/webpack:webpack, target=node, compiler=tsc
+```
+
+The `build` target compiles with `tsc`, so it runs the **production type-check** — use it
+to catch type errors the dev `serve` loop may tolerate.
+
+---
+
 ## 2. Domain model
 
 All money is stored as **integer minor units** (`amount_minor BIGINT`) plus an ISO-4217

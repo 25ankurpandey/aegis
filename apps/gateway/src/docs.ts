@@ -22,6 +22,21 @@ import { Logger } from '@aegis/service-core';
 const GATEWAY_SERVER_URL = 'http://localhost:4000';
 
 /**
+ * Spacing/typography overrides for the info block. Swagger UI's default rendering of a long,
+ * multi-paragraph `info.description` collapses line-height and paragraph margins (the headings and
+ * body text overlap). These rules restore readable line-height, paragraph spacing, title size, and
+ * inline-code padding without touching the rest of the UI.
+ */
+const DOCS_CSS = `
+  .swagger-ui .info { margin: 30px 0 24px }
+  .swagger-ui .info hgroup.main, .swagger-ui .info .title { font-size: 30px; line-height: 1.3; margin: 0 0 14px }
+  .swagger-ui .info .description { line-height: 1.65 }
+  .swagger-ui .info .description p, .swagger-ui .renderedMarkdown p { line-height: 1.65; margin: 0 0 14px }
+  .swagger-ui .info .description h1, .swagger-ui .info .description h2, .swagger-ui .info .description h3 { margin: 20px 0 8px; line-height: 1.3 }
+  .swagger-ui .info .description code, .swagger-ui .renderedMarkdown code { padding: 1px 6px; border-radius: 4px; font-size: 13px }
+`;
+
+/**
  * Candidate locations for the spec, in priority order:
  *  1. next to the bundle (`dist/apps/gateway/openapi.yaml`) — copied by webpack `assets` at build;
  *     `__dirname` is the bundle dir in the built image.
@@ -81,6 +96,7 @@ export function mountApiDocs(app: Express): void {
     swaggerUi.setup(spec, {
       explorer: true,
       customSiteTitle: 'Aegis API — live reference',
+      customCss: DOCS_CSS,
       swaggerOptions: { persistAuthorization: true },
     }),
   );

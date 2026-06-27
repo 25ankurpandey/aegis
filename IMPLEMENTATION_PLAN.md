@@ -3,7 +3,7 @@
 > The living build tracker. Every agent updates this file: tick tasks, refresh **Current status**
 > and **Last updated**. Authoritative design lives in [`SPEC.md`](SPEC.md); this file is _progress_.
 
-**Last updated:** 2026-06-27 (live local-stack hardening — current-code services running in iTerm against Dockerized Postgres/Redis/Kafka; scripted HTTP flows + live E2E green; per-service image packaging added) · **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
+**Last updated:** 2026-06-27 (live local-stack hardening — current-code services run against Dockerized Postgres/Redis/Kafka; browser log dashboard replaces terminal-specific monitoring; scripted HTTP flows expanded; per-service image packaging added) · **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 
 > **Build mode:** autonomous multi-pass loop (self-paced + scheduled wake-up that auto-resumes
 > after 5-hourly usage-limit windows and overnight). Each pass advances the next unchecked tasks,
@@ -28,7 +28,7 @@ What's built and verified (Nx build + `tsc` + Jest):
 - **10 shared libs** — `service-core` (AsyncLocalStorage context + strict header validation, logger,
   error envelope, context-propagating HTTP client + internal s2s tokens, config/secrets, cache),
   `db` (non-owner Sequelize + RLS helpers + Umzug migrator), `access-control` (PDP RBAC+ABAC+scope,
-  PEP authenticate/authorize), `events` (bus + Redis + outbox), `connectors` (3 mock ERPs), `audit`
+  PEP authenticate/authorize), `events` (Kafka bus + outbox), `connectors` (3 mock ERPs), `audit`
   (hash-chained tamper-evident), `shared-enums/types/constants`, `testing`.
 - **9 apps** — `gateway` (edge entry, correlation-id minting, routing) + 7 services (user-management
   = IdP + dynamic PAP + RLS; invoice; expense; workflow; payroll w/ field encryption + maker-checker;
@@ -36,8 +36,8 @@ What's built and verified (Nx build + `tsc` + Jest):
   (including teams/tags, connector configs, employee-user binding, sessions/invites/policies,
   permissive RLS base, RLS-safe outbox tenant cast, audit hash canonicalization).
 - **Operations** — per-service Docker images + `PROCESS_TYPE`; one-command local run
-  (`scripts/dev-up.sh` / `scripts/setup.sh` / `scripts/test-dockerized.sh` + per-service dummy `.env`); fast local
-  loop (`scripts/dev-local-iterm.sh`) runs current TypeScript services in one iTerm window against Dockerized infra; Terraform
+  (`scripts/dev-up.sh` / `scripts/setup.sh` / `scripts/test-dockerized.sh` + per-service dummy `.env`);
+  browser log/analytics dashboard (`scripts/log-dashboard.js`) provides reviewer log/metrics monitoring; Terraform
   IaC (one `terraform apply`); hash-chained audit wired into login + role mgmt + every approve path.
 - **Docs** — `SPEC.md`, `DESIGN.md`, the `docs/` suite (indexed by `docs/README.md`: `ARCHITECTURE.md`
   + `architecture/` chapters + per-service + numbered `0N-*.md` deep-dives + `api/` + `testing/`) +
@@ -48,14 +48,13 @@ What's built and verified (Nx build + `tsc` + Jest):
 ### Remaining (Docker-gated or owner-decision — see notes)
 
 - **Final Dockerized acceptance pass**: after the remaining live-flow expansion, run
-  `bash scripts/test-dockerized.sh` from a clean state. It builds the per-service images, opens one
-  iTerm log window when available, and runs the predefined HTTP flow script in a disposable Node
+  `bash scripts/test-dockerized.sh` from a clean state. It builds the per-service images, starts the
+  browser log/analytics dashboard, and runs the predefined HTTP flow script in a disposable Node
   container on the Compose network. Current fast-loop verification is green against local
-  current-code services: scripted HTTP flows, `apps/e2e-tests/live`, DB metadata, and audit chain.
-- **Live Swagger / `/api-docs` serving**: the offline reference (`docs/api/index.html` rendered from
-  `docs/api/openapi.yaml`) is complete and each service reserves a context-bypassing `/api-docs` path,
-  but no service yet mounts a Swagger UI from the spec at runtime. Wiring the live UI is the remaining
-  API-docs item.
+  current-code services: scripted HTTP flows, in-process E2E/Jest, DB metadata, and audit chain.
+- **Live Swagger / `/api-docs` serving**: closed. The gateway mounts `GET /api-docs` and
+  `GET /api-docs.json` from `docs/api/openapi.yaml` before the proxy/auth middleware, so reviewers
+  can use Swagger UI after `scripts/setup.sh`.
 - **Scheduled bug-hunting agents** (Phase 10): wire to run the flow catalogue against the live stack
   and append to `BUGLOG.md` — meaningful only against a running app.
 - **Frontend** (Phase 11): **analysis-only** (the standalone `docs/research/frontend-analysis.md`
@@ -231,8 +230,8 @@ What's built and verified (Nx build + `tsc` + Jest):
 - [x] `scripts/dev-up.sh` / `scripts/setup.sh` — one command: build every per-service image, start dockerized Postgres (pre-seeded RLS non-owner role + DBs) + Kafka + Redis, run all service containers on one Docker network, wired with correct ports/hostnames; zero manual env.
 - [x] `scripts/db-init/*.sql` — `01-init.sql` creates the app (non-owner, no BYPASSRLS) role + per-service DBs/schemas
 - [x] `docker-compose.all.yml` — all services + infra, internal DNS hostnames, healthchecks, depends_on, `PROCESS_TYPE=worker` consumers
-- [x] `scripts/dev-local-iterm.sh` — fast hardening loop: Dockerized infra only; current TypeScript services/workers run in one split-pane iTerm window; no image rebuild required.
-- [x] `scripts/test-dockerized.sh` + `scripts/e2e/http-flow-tests.js` — reviewer path: setup full Docker stack, open live logs, run predefined HTTP flow assertions from a disposable Node container.
+- [x] `scripts/log-dashboard.js` + `scripts/start-log-dashboard.sh` — browser-based realtime log/analytics dashboard at `http://127.0.0.1:4010`, with per-service log panes and health/error/request metrics for the Dockerized reviewer path.
+- [x] `scripts/test-dockerized.sh` + `scripts/e2e/http-flow-tests.js` — reviewer path: setup full Docker stack, start dashboard when available, run predefined HTTP flow assertions from a disposable Node container.
 - [x] Per-service `apps/<svc>/.env` committed with consistent working DUMMY values (all 8 services + cli + gateway); `docker compose up` works end-to-end with no manual setup
 - [~] `.vscode/tasks.json` (build/up bound to Cmd+Shift+B) + `.vscode/settings.json` present; **`.vscode/launch.json` is referenced in `docs/09-deployment-and-ops.md` but not yet committed** — add it or drop the doc reference
 - [x] `docs/09-deployment-and-ops.md` "Run it locally in one step" section (script + Cmd+Shift+B + "ask Claude to run") — written (§1)
@@ -281,7 +280,7 @@ What's built and verified (Nx build + `tsc` + Jest):
   outbox, the shared approval engine, the cross-service event→rule→approval→notification chain,
   payroll field-level RBAC/masking + SoD maker-checker + idempotent inbound, the always-on
   cross-cutting checklist, the `apps/e2e-tests` harness, and the Phase 8 one-command-run deliverables.
-  Recorded the genuinely-not-built remainders honestly: **live Swagger/`/api-docs` serving**, RFC-8693
+  Recorded the genuinely-not-built remainders honestly: RFC-8693
   token exchange, reporting `fact_*` read models + access-scope result cache, scheduled
   reconcile/bug-hunting agents, and a missing `.vscode/launch.json` referenced by the ops doc. The
   **primary remaining gate stays the Docker-gated live E2E run.** Also removed dangling references to

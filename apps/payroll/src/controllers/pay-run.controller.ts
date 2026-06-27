@@ -7,6 +7,7 @@ import {
   RequestContext,
   hasRecordAnnotationScopeFilters,
   parseRecordAnnotationQuery,
+  routeParam,
   validate,
 } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
@@ -57,7 +58,7 @@ export class PayRunController {
 
   @httpPost('/pay-runs/:id/calculate', authenticate(), authorize(Permission.PayRunCalculate))
   async calculate(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.payRuns.calculate(req.params['id']));
+    res.status(200).json(await this.payRuns.calculate(routeParam(req, 'id')));
   }
 
   /**
@@ -74,7 +75,7 @@ export class PayRunController {
     validate(decideSchema),
   )
   async decide(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.payRuns.decide(req.params['id'], req.body));
+    res.status(200).json(await this.payRuns.decide(routeParam(req, 'id'), req.body));
   }
 
   /**
@@ -101,7 +102,7 @@ export class PayRunController {
       .status(200)
       .json(
         await this.payRuns.listPayslips(
-          { ...filter, payRunId: req.params['id'] },
+          { ...filter, payRunId: routeParam(req, 'id') },
           page,
           pageSize,
           this.payslipAccess(res),
@@ -138,7 +139,7 @@ export class PayRunController {
   async getPayslip(req: Request, res: Response): Promise<void> {
     res
       .status(200)
-      .json({ data: await this.payRuns.getPayslip(req.params['id'], this.payslipAccess(res)) });
+      .json({ data: await this.payRuns.getPayslip(routeParam(req, 'id'), this.payslipAccess(res)) });
   }
 
   @httpGet(
@@ -148,7 +149,7 @@ export class PayRunController {
     validate(payRunIdParamSchema, 'params'),
   )
   async get(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.payRuns.get(req.params['id']) });
+    res.status(200).json({ data: await this.payRuns.get(routeParam(req, 'id')) });
   }
 
   /**
@@ -162,13 +163,13 @@ export class PayRunController {
     validate(approveSchema),
   )
   async approve(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.payRuns.approve(req.params['id'], req.body?.comment));
+    res.status(200).json(await this.payRuns.approve(routeParam(req, 'id'), req.body?.comment));
   }
 
   @httpPost('/pay-runs/:id/disburse', authenticate(), authorize(Permission.PayRunDisburse))
   async disburse(req: Request, res: Response): Promise<void> {
     const idempotencyKey = (req.header('Idempotency-Key') ?? '').trim();
-    res.status(200).json(await this.payRuns.disburse(req.params['id'], idempotencyKey));
+    res.status(200).json(await this.payRuns.disburse(routeParam(req, 'id'), idempotencyKey));
   }
 
   private page(req: Request): { page: number; pageSize: number } {

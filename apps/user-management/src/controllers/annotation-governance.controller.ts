@@ -8,7 +8,7 @@ import {
   httpPost,
   httpPut,
 } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -48,17 +48,17 @@ export class AnnotationGovernanceController {
     validate(updateTeamSchema),
   )
   async updateTeam(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.svc.updateTeam(req.params['teamId'], req.body) });
+    res.status(200).json({ data: await this.svc.updateTeam(routeParam(req, 'teamId'), req.body) });
   }
 
   @httpDelete('/teams/:teamId', authenticate(), authorize(Permission.TeamManage))
   async deleteTeam(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.svc.deleteTeam(req.params['teamId']));
+    res.status(200).json(await this.svc.deleteTeam(routeParam(req, 'teamId')));
   }
 
   @httpGet('/teams/:teamId/members', authenticate(), authorize(Permission.TeamManage))
   async listTeamMembers(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.svc.listTeamMembers(req.params['teamId']) });
+    res.status(200).json({ data: await this.svc.listTeamMembers(routeParam(req, 'teamId')) });
   }
 
   @httpPost(
@@ -68,19 +68,19 @@ export class AnnotationGovernanceController {
     validate(addTeamMemberSchema),
   )
   async addTeamMember(req: Request, res: Response): Promise<void> {
-    res.status(201).json({ data: await this.svc.addTeamMember(req.params['teamId'], req.body) });
+    res.status(201).json({ data: await this.svc.addTeamMember(routeParam(req, 'teamId'), req.body) });
   }
 
   @httpDelete('/teams/:teamId/members/:userId', authenticate(), authorize(Permission.TeamManage))
   async removeTeamMember(req: Request, res: Response): Promise<void> {
     res
       .status(200)
-      .json(await this.svc.removeTeamMember(req.params['teamId'], req.params['userId']));
+      .json(await this.svc.removeTeamMember(routeParam(req, 'teamId'), routeParam(req, 'userId')));
   }
 
   @httpGet('/teams/:teamId/tags', authenticate(), authorize(Permission.TagList))
   async listTeamTags(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.svc.listTeamTags(req.params['teamId']) });
+    res.status(200).json({ data: await this.svc.listTeamTags(routeParam(req, 'teamId')) });
   }
 
   @httpPut(
@@ -90,7 +90,7 @@ export class AnnotationGovernanceController {
     validate(setTeamTagsSchema),
   )
   async setTeamTags(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.svc.setTeamTags(req.params['teamId'], req.body.tagIds));
+    res.status(200).json(await this.svc.setTeamTags(routeParam(req, 'teamId'), req.body.tagIds));
   }
 
   @httpGet('/tags', authenticate(), authorize(Permission.TagList))
@@ -110,20 +110,20 @@ export class AnnotationGovernanceController {
     validate(updateTagSchema),
   )
   async updateTag(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.svc.updateTag(req.params['tagId'], req.body) });
+    res.status(200).json({ data: await this.svc.updateTag(routeParam(req, 'tagId'), req.body) });
   }
 
   @httpDelete('/tags/:tagId', authenticate(), authorize(Permission.TagDelete))
   async deleteTag(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.svc.deleteTag(req.params['tagId']));
+    res.status(200).json(await this.svc.deleteTag(routeParam(req, 'tagId')));
   }
 
   @httpGet('/records/:recordType/:recordId/tags', authenticate(), authorize(Permission.TagList))
   async listRecordTags(req: Request, res: Response): Promise<void> {
     res.status(200).json({
       data: await this.svc.listRecordTags(
-        parseRecordType(req.params['recordType']),
-        req.params['recordId'],
+        parseRecordType(routeParam(req, 'recordType')),
+        routeParam(req, 'recordId'),
       ),
     });
   }
@@ -139,8 +139,8 @@ export class AnnotationGovernanceController {
       .status(200)
       .json(
         await this.svc.attachRecordTag(
-          parseRecordType(req.params['recordType']),
-          req.params['recordId'],
+          parseRecordType(routeParam(req, 'recordType')),
+          routeParam(req, 'recordId'),
           req.body.tagId,
         ),
       );
@@ -156,9 +156,9 @@ export class AnnotationGovernanceController {
       .status(200)
       .json(
         await this.svc.detachRecordTag(
-          parseRecordType(req.params['recordType']),
-          req.params['recordId'],
-          req.params['tagId'],
+          parseRecordType(routeParam(req, 'recordType')),
+          routeParam(req, 'recordId'),
+          routeParam(req, 'tagId'),
         ),
       );
   }
@@ -174,8 +174,8 @@ export class AnnotationGovernanceController {
       .status(200)
       .json(
         await this.svc.assignRecord(
-          parseRecordType(req.params['recordType']),
-          req.params['recordId'],
+          parseRecordType(routeParam(req, 'recordType')),
+          routeParam(req, 'recordId'),
           req.body,
         ),
       );

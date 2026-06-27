@@ -1,8 +1,9 @@
 # 09 — Deployment & Operations
 
 > **Scope.** How Aegis is packaged, shipped, promoted across environments, migrated, observed,
-> and — first and foremost for any contributor — **run locally in one step**. The model is the
-> de-branded "single image, many roles" deployment locked in [`../SPEC.md`](../SPEC.md) §1 and §7.
+> and — first and foremost for any contributor — **run locally in one step**. The model is
+> **per-service images from one Nx monorepo**, with `PROCESS_TYPE` selecting api/worker/migration
+> inside each service image, as locked in [`../SPEC.md`](../SPEC.md) §1 and §7.
 > Where this doc and `SPEC.md` disagree, **`SPEC.md` wins** (and §10 wins over §0–§9).
 
 Related reading: [`ARCHITECTURE.md`](ARCHITECTURE.md) (the `apps/*` deployables vs `libs/*`
@@ -14,20 +15,20 @@ correlation-id logging here depends on).
 
 ## 0. TL;DR — the operating model in seven lines
 
-1. **One image.** A single multi-stage `Dockerfile` builds the whole monorepo into one image.
-2. **Many roles.** `scripts/start.sh` switches on `PROCESS_TYPE` → `api` | `worker` | `migration`,
-   and on `SERVICE_NAME` for *which* app — so the same bits run every service, the worker, and the
-   migration task.
-3. **Build once, promote by re-tag.** The image is tagged `:$GIT_SHA` once and then *promoted* to
-   `dev` → `staging` → `production` by adding a moving tag to the **same** manifest — never rebuilt.
-4. **Migrations are a one-shot task** using that same image (`PROCESS_TYPE=migration`), run before
-   services roll, so schema and code versions can never drift.
+1. **Per-service images.** `Dockerfile.service` builds `aegis/<service>:<tag>` from the shared
+   monorepo, so each service has its own deployable artifact.
+2. **Many roles, separate scale units.** `scripts/start.sh` switches on `PROCESS_TYPE` → `api` |
+   `worker` | `migration`; APIs, workers, and migrations are separate containers/processes.
+3. **Build once, promote by re-tag.** Each affected service image is tagged `:$GIT_SHA` once and then
+   promoted to `dev` → `staging` → `production` by adding a moving tag to the same manifest.
+4. **Migrations are a one-shot task** using the CLI image (`PROCESS_TYPE=migration`), run before
+   services roll.
 5. **Runtime secrets** come from a parameter store keyed by env prefix (`/aegis/<env>/…`); no
    secret is ever baked into an image or CI log.
 6. **Health is real.** `/health` (and `/health?details=true`) probes Postgres + Redis + the event
    bus; **readiness gates traffic** until dependencies are actually reachable.
 7. **It runs locally in one step.** `bash scripts/dev-up.sh` (or VS Code **Cmd+Shift+B**, or "ask
-   Claude to run it") builds every image, starts a pre-seeded Postgres + Redis, and brings all
+   Claude to run it") builds every service image, starts a pre-seeded Postgres + Redis + Kafka, and brings all
    services up on one Docker network with **zero manual env setup**.
 
 ---
@@ -47,12 +48,12 @@ bash scripts/dev-up.sh
 That script ([`../scripts/dev-up.sh`](../scripts/dev-up.sh)) is the single source of truth for local
 bring-up. It:
 
-1. `docker compose -f docker-compose.all.yml up -d --build` — builds the **one** Aegis image from
-   [`../Dockerfile`](../Dockerfile) and starts **Postgres + Redis + all eight services** on one
-   bridge network.
+1. `docker compose -f docker-compose.all.yml up -d --build` — builds the **per-service** Aegis
+   images from [`../Dockerfile.service`](../Dockerfile.service) and starts **Postgres + Redis +
+   Kafka + all eight services** on one bridge network.
 2. Waits for Postgres to report healthy (`pg_isready`).
 3. Runs **migrations + seeders as a one-shot** task (`docker compose run --rm` with
-   `PROCESS_TYPE=migration`) using the exact same image.
+   `PROCESS_TYPE=migration`) using the CLI image.
 4. Prints the entry point: the gateway on `http://localhost:4000`, services on `4001–4007`.
 
 ```text
@@ -139,9 +140,9 @@ port mappings let you reach any service directly from your machine.
 | `invoice` | Header-level invoice lifecycle | `invoice:4007` | `4007` |
 | `migrate` | One-shot migrations (`profiles: [tools]`) | — | — |
 
-All app containers share one YAML anchor (`x-app: &app`) — the same `image: aegis:local`, the same
-`depends_on` gating on Postgres + Redis health, the same network — and differ only by `env_file` and
-`SERVICE_NAME`. That is the local mirror of the production "one image, many roles" model.
+All app containers share one runtime YAML anchor (`x-app: &app`) for `depends_on` gating and the
+same network, but each service declares its own `image: aegis/<service>:local` build. That is the
+local mirror of the production per-service image model.
 
 ```mermaid
 flowchart LR
@@ -201,31 +202,34 @@ docker compose -f docker-compose.all.yml down -v       # …and wipe the aegis_p
 
 ---
 
-## 2. One image, many roles (the packaging model)
+## 2. Per-service images, shared entrypoint
 
-### 2.1 The Dockerfile
+### 2.1 Dockerfile.service
 
-[`../Dockerfile`](../Dockerfile) is a two-stage build. The **build** stage installs native toolchain
-deps (for `pg`), runs `nx run-many -t build --all --prod` to emit `dist/`, and the **release** stage
-copies only `dist/`, `node_modules`, `package.json`, and the entrypoint into a slim `node:22-alpine`
-runtime that runs as a **non-root** `aegis` user under `tini`:
+[`../Dockerfile.service`](../Dockerfile.service) is a two-stage build parameterized by
+`SERVICE_NAME`. The **build** stage installs native toolchain deps (for `pg`), runs
+`nx run <service>:build --prod` to emit `dist/apps/<service>/main.js`, and the **release** stage
+copies that service bundle, `node_modules`, `package.json`, and the entrypoint into a slim
+`node:22-alpine` runtime that runs as a **non-root** `aegis` user under `tini`:
 
 ```dockerfile
 # ---- build stage ----
 FROM node:22-alpine AS build
+ARG SERVICE_NAME
 WORKDIR /usr/src/app
 RUN apk add --no-cache python3 make g++ libpq-dev
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
-RUN npx nx run-many -t build --all --prod
+RUN npx nx run "${SERVICE_NAME}:build" --prod
 
 # ---- release stage ----
 FROM node:22-alpine AS release
+ARG SERVICE_NAME
 WORKDIR /usr/src/app
 RUN apk add --no-cache libpq tini
 ENV NODE_ENV=production
-COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/dist/apps/${SERVICE_NAME} ./dist/apps/${SERVICE_NAME}
 COPY --from=build /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/package.json ./package.json
 COPY scripts/start.sh ./scripts/start.sh
@@ -237,9 +241,10 @@ ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["./scripts/start.sh"]
 ```
 
-There is **one** Dockerfile for the whole platform — not one per service. The build artifact is a
-single image that contains every app's `dist/`; *which* app runs is a runtime decision, not a
-build-time one.
+There is **one Dockerfile pattern** for the whole platform, but the build artifact is service-scoped:
+`aegis/gateway`, `aegis/user-management`, `aegis/expense`, `aegis/payroll`, `aegis/reporting`,
+`aegis/workflow`, `aegis/notification`, `aegis/invoice`, and `aegis/cli`. The monorepo is a source
+and build boundary; each service is still a separate image and runtime scale unit.
 
 ### 2.2 The PROCESS_TYPE entrypoint switch
 
@@ -255,7 +260,7 @@ case "$PROCESS_TYPE" in
     node ./dist/apps/cli/main.js migrate-seeders --auto-confirm
     ;;
   worker)
-    exec node "./dist/apps/${SERVICE_NAME}/worker.js"
+    exec node "./dist/apps/${SERVICE_NAME}/main.js"
     ;;
   api|*)
     exec node "./dist/apps/${SERVICE_NAME}/main.js"
@@ -528,8 +533,8 @@ zero-downtime operation rather than a "remember to bounce the service" footgun.
 
 ## 8. Autoscaling
 
-Each `api` service and each `worker` scales independently because they are separate runtime roles of
-the same image:
+Each `api` service and each `worker` scales independently because they are separate containers and
+service images:
 
 - **API services** scale on request-driven signals (CPU / in-flight request concurrency / p95
   latency), behind the load balancer, with readiness (§6) ensuring a scaled-up replica only takes
@@ -576,23 +581,18 @@ line, so an operator can read straight off a trace exactly which immutable image
 
 ---
 
-## 10. Why single-image + tag-promotion + migration-as-task beats per-service Dockerfile + compose
+## 10. Why per-service images from one monorepo
 
-A growing platform has two viable shapes. Aegis deliberately chose the first.
+Aegis uses a monorepo for shared-library coherence, but deploys services independently.
 
-| Concern | **Aegis: one image, many roles, SHA-promotion** | Per-service Dockerfile + per-service compose |
-|---|---|---|
-| **Build surface** | **One** Dockerfile; `nx affected` decides what to test, but the artifact is a single image regardless of service count | One Dockerfile per service; the matrix grows linearly with services and rots unevenly |
-| **Version parity** | API, worker, and migration runner are **byte-identical** — impossible to mismatch schema vs code | N images built at different times can drift; the worker can lag the API |
-| **Promotion** | `dev→staging→prod` is a **tag** on the tested manifest — exact bits ship | Each env rebuilds from source → "rebuilt, therefore subtly different" risk |
-| **Migrations** | Explicit one-shot task on the **same** image, run before roll, once | Often baked into per-service startup → N replicas race to migrate; ordering is implicit |
-| **Local fidelity** | One compose file, one anchor, pre-seeded RLS role → prod-shaped stack in one command | Many compose files to keep in sync; easy for local to diverge from prod |
-| **Secrets** | Env-prefixed param store; image is env-agnostic; rotation needs no rebuild | Per-service env files multiply; tempting to bake secrets into images |
-| **New service onboarding** | Add `apps/<svc>` + an `.env` + a compose entry (one anchor reuse) + a CI loop entry | New Dockerfile, new build job, new image lifecycle, new compose service — more moving parts each time |
-
-The single-image model trades a slightly larger image (it carries every app's `dist/`) for the
-disappearance of an entire class of multi-artifact drift and operational complexity — a trade that
-gets **better** as the platform adds services, which is exactly the trajectory Aegis is on.
+| Concern | Aegis approach |
+|---|---|
+| **Build surface** | One shared `Dockerfile.service` pattern; each service image is built with a `SERVICE_NAME` arg. |
+| **Version parity** | A service API and its worker reuse the same service image; the CLI image owns migrations. |
+| **Independent scaling** | Each API and worker is a separate container/deployment. Scale `expense` without scaling `payroll`; scale `workflow-worker` without adding workflow HTTP replicas. |
+| **Promotion** | Each tested service image is promoted by immutable SHA tag. |
+| **Local fidelity** | One Compose file builds every service image and wires infra, services, workers, and migrations on one network. |
+| **Secrets** | Env-prefixed param store; images are env-agnostic; rotation needs no rebuild. |
 
 ---
 
@@ -601,6 +601,8 @@ gets **better** as the platform adds services, which is exactly the trajectory A
 | Task | Command |
 |---|---|
 | Bring the whole platform up locally | `bash scripts/dev-up.sh` (or **Cmd+Shift+B**) |
+| Bring up + run reviewer HTTP flows | `bash scripts/test-dockerized.sh` |
+| Open browser logs/analytics | `bash scripts/start-log-dashboard.sh docker` → `http://127.0.0.1:4010` |
 | Bring up only infra deps | `npm run compose:up` |
 | Apply migrations locally | `npm run migrate` then `npm run migrate:seed` |
 | Migration status | `npm run migrate:status` |

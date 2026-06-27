@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpDelete, httpGet } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { ApiConstants } from '@aegis/shared-constants';
 import { Permission } from '@aegis/shared-enums';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -20,6 +20,6 @@ export class SessionController {
 
   @httpDelete('/sessions/:id', authenticate(), authorize(Permission.SessionRevoke), validate(idParamSchema, 'params'))
   async revoke(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.sessions.revoke(req.params['id']) });
+    res.status(200).json({ data: await this.sessions.revoke(routeParam(req, 'id')) });
   }
 }

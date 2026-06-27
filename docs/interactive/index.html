@@ -565,7 +565,7 @@
         </div>
 
         <div class="callout">
-          <b>One image, many roles.</b> All eight apps build from a single multi-stage <code>Dockerfile</code>.
+          <b>Per-service images, many roles.</b> All apps build from one monorepo using <code>Dockerfile.service</code>.
           <code>scripts/start.sh</code> switches on <code>PROCESS_TYPE</code> → <code>api</code> (the selected
           <code>SERVICE_NAME</code>), <code>worker</code>, or <code>migration</code> — see the Deployment section.
         </div>
@@ -785,15 +785,15 @@
       <section class="view" id="view-deploy">
         <div class="eyebrow">Build Once, Promote Forward</div>
         <h2>Deployment</h2>
-        <p class="lede">One multi-stage image builds the whole monorepo. A single entrypoint switches its role by
+        <p class="lede">One shared Dockerfile pattern builds per-service images from the monorepo. A single entrypoint switches each service image's role by
           <code>PROCESS_TYPE</code>. Images are immutable and tagged by Git SHA — promotion across environments is a
           <i>re-tag</i>, never a rebuild, so what you tested is byte-for-byte what ships.</p>
 
-        <h3>One image, three roles — <code>PROCESS_TYPE</code></h3>
+        <h3>Per-service image roles — <code>PROCESS_TYPE</code></h3>
         <div class="proc-grid">
           <div class="proc"><div class="pt">PROCESS_TYPE=api</div><div class="pd">Boots the app named by <code>SERVICE_NAME</code> (e.g. <code>expense</code>): Express + Inversify, readiness-gated.</div></div>
           <div class="proc"><div class="pt">PROCESS_TYPE=worker</div><div class="pd">Consumes the event bus / BullMQ queues — report exports, scheduled workflow actions, async notifications.</div></div>
-          <div class="proc"><div class="pt">PROCESS_TYPE=migration</div><div class="pd">Runs Umzug migrations as a one-shot task using the same image, then exits.</div></div>
+          <div class="proc"><div class="pt">PROCESS_TYPE=migration</div><div class="pd">Runs Umzug migrations as a one-shot task using the CLI image, then exits.</div></div>
         </div>
 
         <pre class="code"><span class="c"># scripts/start.sh — the entrypoint switch</span>

@@ -34,7 +34,7 @@ by clean open primitives (notably **AsyncLocalStorage** in place of `cls-hooked`
 9. [Event bus — publish/consume + transactional outbox](#9-event-bus--publishconsume--transactional-outbox)
 10. [Migrations — Umzug code-first](#10-migrations--umzug-code-first)
 11. [Adapter / strategy — `@aegis/connectors`](#11-adapter--strategy--aegisconnectors)
-12. [Single image + `PROCESS_TYPE`](#12-single-image--process_type)
+12. [Per-service images + `PROCESS_TYPE`](#12-per-service-images--process_type)
 
 ---
 
@@ -766,7 +766,7 @@ side make redelivery safe.
 
 Schema changes are **Umzug code-first** numbered migrations — never `sequelize.sync()`, which is
 unsafe in production. Each migration is `NNNN_subject.ts` exporting `{ name, up, down }`, run as a
-**one-shot task** (`PROCESS_TYPE=migration`, §12) using the same image as the services.
+**one-shot task** (`PROCESS_TYPE=migration`, §12) using the CLI image.
 
 ```
 libs/db/src/migrations/
@@ -874,7 +874,7 @@ propagation + secret-proxy patterns, with an idempotency key on every push. See
 
 ---
 
-## 12. Single image + `PROCESS_TYPE`
+## 12. Per-service images + `PROCESS_TYPE`
 
 The whole monorepo builds into **one** Docker image. `scripts/start.sh` switches on the
 `PROCESS_TYPE` env var to decide which role the container plays — `api`, `worker`, or `migration` —
@@ -884,14 +884,14 @@ the migration task runs the exact code the services will run.
 
 ```mermaid
 flowchart TD
-  IMG["one image :GIT_SHA<br/>(whole dist/)"] --> START[scripts/start.sh]
+  IMG["service image :GIT_SHA<br/>(dist/apps/service)"] --> START[scripts/start.sh]
   START -->|PROCESS_TYPE=api| API["node dist/apps/&#36;SERVICE_NAME<br/>HTTP server"]
   START -->|PROCESS_TYPE=worker| WORKER["node dist/worker<br/>bus consumers + BullMQ jobs"]
   START -->|PROCESS_TYPE=migration| MIG["node dist/cli migrate<br/>one-shot Umzug task"]
 ```
 
 ```bash
-# scripts/start.sh — single entrypoint, one image, many roles
+# scripts/start.sh — shared entrypoint, per-service images, many roles
 set -euo pipefail
 case "${PROCESS_TYPE:-api}" in
   api)       exec node "dist/apps/${SERVICE_NAME}/main.js" ;;   # the selected service's HTTP API
@@ -939,4 +939,4 @@ on pods that should not relay. Tunables: `OUTBOX_RELAY_BATCH` (100), `OUTBOX_REL
 - [`04-multi-tenancy.md`](04-multi-tenancy.md) — `tenant_id` + Postgres RLS mechanics.
 - [`06-service-to-service.md`](06-service-to-service.md) — context propagation, internal JWT, token exchange.
 - [`07-data-models.md`](07-data-models.md) — full schema per service.
-- [`08-deployment.md`](08-deployment.md) — single image, `PROCESS_TYPE`, CI, secrets, health.
+- [`08-deployment.md`](08-deployment.md) — per-service images, `PROCESS_TYPE`, CI, secrets, health.

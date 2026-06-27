@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet, httpPost } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -28,6 +28,6 @@ export class RoleController {
 
   @httpPost('/users/:userId/role', authenticate(), authorize(Permission.RoleAssign), validate(assignRoleSchema))
   async assignRole(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.pap.assignRole({ userId: req.params['userId'], ...req.body }));
+    res.status(200).json(await this.pap.assignRole({ userId: routeParam(req, 'userId'), ...req.body }));
   }
 }

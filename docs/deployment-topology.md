@@ -1,23 +1,32 @@
 # Deployment Topology
 
-How Aegis is packaged and run. The whole platform ships as **one image** whose
-runtime role is chosen entirely by environment variables — `SERVICE_NAME`
-(which app's bundle to run) and `PROCESS_TYPE` (api / worker / migration). This
-document is grounded in `Dockerfile`, `scripts/start.sh`, `docker-compose.all.yml`,
-and the per-app `apps/*/src/bootstrap.ts` composition roots.
+How Aegis is packaged and run. Aegis is a monorepo, but it is **not deployed as a
+monolith**: each API service has its own image tag and its own container/process
+scale unit. Runtime role is still selected by environment variables —
+`SERVICE_NAME` (which app's bundle to run) and `PROCESS_TYPE` (api / worker /
+migration). This document is grounded in `Dockerfile.service`,
+`scripts/start.sh`, `docker-compose.all.yml`, and the per-app
+`apps/*/src/bootstrap.ts` composition roots.
 
-## 1. One image, many roles
+## 1. One monorepo, per-service images
 
-`Dockerfile` builds a single multi-stage image (`aegis:local`):
+`Dockerfile.service` builds a service-scoped multi-stage image:
 
-- **build stage** — `npx nx run-many -t build --all --prod` compiles every app
-  into `dist/apps/<service>/main.js`.
+- **build stage** — `npx nx run <service>:build --prod` compiles one app into
+  `dist/apps/<service>/main.js`.
 - **release stage** — copies `dist/`, `node_modules`, `package.json`, and
   `scripts/start.sh`; runs as the non-root `aegis` user under `tini` (PID 1 for
   correct signal forwarding); `EXPOSE 4000`; `CMD ["./scripts/start.sh"]`.
 
-Because api / worker / migration all run from the **same** artifact, they are
-byte-identical versions of the code — there is no per-role build skew.
+Compose tags those images independently: `aegis/gateway:local`,
+`aegis/user-management:local`, `aegis/expense:local`, `aegis/payroll:local`,
+`aegis/reporting:local`, `aegis/workflow:local`, `aegis/notification:local`,
+`aegis/invoice:local`, and `aegis/cli:local`.
+
+The workflow and notification workers intentionally reuse their owning service
+image with `PROCESS_TYPE=worker`. That keeps each service's API and worker on the
+same code version while still deploying them as separate containers that scale
+independently.
 
 The image's behaviour is selected by `scripts/start.sh`, which switches on
 `PROCESS_TYPE` (default `api`) and `SERVICE_NAME` (default `user-management`):
@@ -44,10 +53,10 @@ dedicated relay process is a documented scaling option, not a wired entrypoint.
 
 ## 2. The pod matrix (docker-compose.all.yml)
 
-`docker-compose.all.yml` materialises every role from the shared `x-app` anchor
-(same image, same Postgres/Redis/Kafka deps, same network). Infrastructure:
-`postgres` (15-alpine, RLS), `redis` (7-alpine, cache-only), `kafka`
-(bitnami 3.7, single-broker KRaft, no ZooKeeper).
+`docker-compose.all.yml` materialises every role from a shared runtime anchor
+(same Postgres/Redis/Kafka deps, same network) but with a distinct image tag per
+service. Infrastructure: `postgres` (15-alpine, RLS), `redis` (7-alpine,
+cache-only), `kafka` (Apache Kafka 3.7, single-broker KRaft, no ZooKeeper).
 
 | Pod | `SERVICE_NAME` | `PROCESS_TYPE` | Exposed port | Role |
 | --- | --- | --- | --- | --- |
@@ -62,6 +71,11 @@ dedicated relay process is a documented scaling option, not a wired entrypoint.
 | `notification-worker` | notification | **worker** | *none* | Kafka consumer: event-only notification write path |
 | `invoice` | invoice | api | **4007** | Invoice |
 | `migrate` | cli | **migration** | *none* | One-shot migrations + seeders (`profiles: ["tools"]`, `restart: "no"`) |
+
+In a Kubernetes/ECS/Cloud Run deployment, each row above maps to a separate
+Deployment/Service/Task definition. Scaling `expense` does not scale `payroll`;
+scaling `workflow-worker` does not add workflow HTTP capacity. The monorepo is a
+source-control/build convenience, not a runtime monolith.
 
 ### Pods that expose ports vs pods that do not
 
@@ -148,7 +162,7 @@ The `OutboxRelay` (`libs/events/src/outbox.ts`) drains pending rows to the bus
 
 **Where it runs today:** the relay is started **in-process** inside each producer
 pod via `initOutboxRelay()` — wired in `expense`, `payroll`, and `invoice`
-bootstraps. This keeps single-image / in-process-bus dev working (staged events
+bootstraps. This keeps per-service-image / in-process-bus dev working (staged events
 still reach same-process consumers) and works in production because
 `SKIP LOCKED` makes concurrent relays safe. Opt a pod out with
 `OUTBOX_RELAY_ENABLED=false`. A dedicated `PROCESS_TYPE=relay` process (so exactly
@@ -184,9 +198,10 @@ retry-then-DLQ semantics (`libs/events/src/bus.ts`).
 
 ## 6. Scaling notes
 
-- **API pods scale horizontally.** Every `*-api` pod is stateless behind the
-  gateway — add replicas freely. Each connects its own producer (§3) and, where
-  applicable, runs the in-process outbox relay (safe to run many: `SKIP LOCKED`).
+- **API services scale horizontally and independently.** Every `*-api` service
+  is stateless behind the gateway — add replicas for the hot service only. Each
+  connects its own producer (§3) and, where applicable, runs the in-process
+  outbox relay (safe to run many: `SKIP LOCKED`).
 - **Single database, RLS-isolated.** All services share one Postgres connection
   target; tenant isolation is enforced by Row-Level Security
   (`withTenantTransaction` sets the tenant context per transaction), not by

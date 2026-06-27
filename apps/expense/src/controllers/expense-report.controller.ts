@@ -7,6 +7,7 @@ import {
   RequestContext,
   hasRecordAnnotationScopeFilters,
   parseRecordAnnotationQuery,
+  routeParam,
   validate,
 } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
@@ -59,7 +60,7 @@ export class ExpenseReportController {
   async attachExpense(req: Request, res: Response): Promise<void> {
     res
       .status(200)
-      .json({ data: await this.expense.attachExpenseToReport(req.params['id'], req.body) });
+      .json({ data: await this.expense.attachExpenseToReport(routeParam(req, 'id'), req.body) });
   }
 
   /** Submit a report: OPEN → APPROVALS. Emits expense.submitted. */
@@ -70,7 +71,7 @@ export class ExpenseReportController {
     validate(submitSchema),
   )
   async submit(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.submitReport(req.params['id']) });
+    res.status(200).json({ data: await this.expense.submitReport(routeParam(req, 'id')) });
   }
 
   /**
@@ -92,7 +93,7 @@ export class ExpenseReportController {
     validate(decideSchema),
   )
   async decide(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.decideReport(req.params['id'], req.body) });
+    res.status(200).json({ data: await this.expense.decideReport(routeParam(req, 'id'), req.body) });
   }
 
   /**
@@ -121,7 +122,7 @@ export class ExpenseReportController {
   )
   async approve(req: Request, res: Response): Promise<void> {
     res.status(200).json({
-      data: await this.expense.decideReport(req.params['id'], {
+      data: await this.expense.decideReport(routeParam(req, 'id'), {
         decision: 'approved',
         comment: req.body?.comment,
       }),
@@ -136,7 +137,7 @@ export class ExpenseReportController {
     validate(rejectSchema),
   )
   async reject(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.rejectReport(req.params['id'], req.body) });
+    res.status(200).json({ data: await this.expense.rejectReport(routeParam(req, 'id'), req.body) });
   }
 
   /** Reimburse a report: APPROVED → REIMBURSED. Finance/admin only. */
@@ -147,7 +148,7 @@ export class ExpenseReportController {
     validate(reimburseSchema),
   )
   async reimburse(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.reimburseReport(req.params['id'], req.body) });
+    res.status(200).json({ data: await this.expense.reimburseReport(routeParam(req, 'id'), req.body) });
   }
 
   /**
@@ -161,7 +162,7 @@ export class ExpenseReportController {
     validate(recallSchema),
   )
   async recall(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.recallReport(req.params['id'], req.body) });
+    res.status(200).json({ data: await this.expense.recallReport(routeParam(req, 'id'), req.body) });
   }
 
   /** Add a comment to a report's discussion thread. Guarded by the view permission. */
@@ -172,7 +173,7 @@ export class ExpenseReportController {
     validate(addCommentSchema),
   )
   async addComment(req: Request, res: Response): Promise<void> {
-    res.status(201).json({ data: await this.expense.addComment(req.params['id'], req.body) });
+    res.status(201).json({ data: await this.expense.addComment(routeParam(req, 'id'), req.body) });
   }
 
   /** List a report's comment thread (oldest first). Guarded by the view permission. */
@@ -182,7 +183,7 @@ export class ExpenseReportController {
     authorize(Permission.ExpenseReportView, { resource: (req) => loadReportResource(req) }),
   )
   async listComments(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.listComments(req.params['id']) });
+    res.status(200).json({ data: await this.expense.listComments(routeParam(req, 'id')) });
   }
 
   /**
@@ -195,7 +196,7 @@ export class ExpenseReportController {
     authorize(Permission.ExpenseReportView, { resource: (req) => loadReportResource(req) }),
   )
   async getReportDetail(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.getReportDetail(req.params['id']) });
+    res.status(200).json({ data: await this.expense.getReportDetail(routeParam(req, 'id')) });
   }
 
   /** List reports (row-scoped, paged). */
@@ -230,7 +231,7 @@ export class ExpenseReportController {
     authorize(Permission.ExpenseReportView, { resource: (req) => loadReportResource(req) }),
   )
   async getReport(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.getReport(req.params['id']) });
+    res.status(200).json({ data: await this.expense.getReport(routeParam(req, 'id')) });
   }
 }
 
@@ -240,7 +241,7 @@ export class ExpenseReportController {
  * service-layer load then yields the standard 404.
  */
 async function loadReportResource(req: Request): Promise<AccessShape.ResourceRef> {
-  const id = req.params['id'];
+  const id = routeParam(req, 'id');
   const repo = new ExpenseReportRepository();
   const report = await withTenantTransaction((t) => repo.findReportById(id, t));
   return {

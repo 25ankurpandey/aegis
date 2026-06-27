@@ -6,7 +6,7 @@
 #
 # A new user runs THIS, once, and ends with the entire platform up and every flow exercisable:
 #   1. Verify Docker is installed AND the daemon is running (clear pointer + non-zero exit if not).
-#   2. Build the single multi-purpose image (one image, every role via PROCESS_TYPE — see Dockerfile).
+#   2. Build per-service images from one monorepo/shared Dockerfile.service.
 #   3. Bring up the full stack on one Docker network: Postgres (+RLS app role from scripts/db-init),
 #      Redis, Kafka, all 9 HTTP services (gateway 4000 + 4001-4007), the workflow + notification
 #      Kafka workers, and the in-process outbox relay (runs inside the producer api pods).
@@ -81,12 +81,12 @@ if [ ! -f "${COMPOSE_FILE}" ]; then
 fi
 
 # ===================================================================================================
-# 2 + 3. Build the image and bring the whole stack up (idempotent — reconciles to desired state).
-#     `--build` rebuilds the single aegis:local image (layer-cached) so a re-run picks up code changes.
+# 2 + 3. Build the images and bring the whole stack up (idempotent — reconciles to desired state).
+#     `--build` rebuilds the aegis/<service>:local images (layer-cached) so a re-run picks up code changes.
 #     `up -d` starts/updates every default-profile service (the `migrate` one-shot is in the `tools`
 #     profile, so it does NOT auto-start here — we run it explicitly in step 4).
 # ===================================================================================================
-step "Building the image and starting the stack (Postgres + RLS, Redis, Kafka, 9 services, 2 workers)"
+step "Building service images and starting the stack (Postgres + RLS, Redis, Kafka, 9 services, 2 workers)"
 "${COMPOSE[@]}" -f "${COMPOSE_FILE}" up -d --build
 
 # ===================================================================================================
@@ -112,7 +112,7 @@ if ! "${COMPOSE[@]}" -f "${COMPOSE_FILE}" run --rm -e PROCESS_TYPE=migration mig
   fail "The migrate one-shot exited non-zero. Inspect its output above (and \`${COMPOSE[*]} -f ${COMPOSE_FILE} logs postgres\`)."
   exit 1
 fi
-ok "Migrations + seeders applied (system roles, demo tenant A, casbin policies, approval policies, demo tenant B)."
+ok "Migrations + seeders applied (system roles, demo tenants, casbin policies, approval policies, connector configs)."
 
 # ===================================================================================================
 # 5. Poll /health on the gateway + every service until each reports ok (or time out with diagnostics).
@@ -154,6 +154,18 @@ fi
 step "Background workers (Kafka consumers — no HTTP port)"
 "${COMPOSE[@]}" -f "${COMPOSE_FILE}" ps workflow-worker notification-worker || true
 
+if [ "${AEGIS_LOG_DASHBOARD:-1}" != "0" ]; then
+  step "Starting browser log/analytics dashboard"
+  if bash scripts/start-log-dashboard.sh docker; then
+    DASHBOARD_URL="http://127.0.0.1:${AEGIS_LOG_DASHBOARD_PORT:-4010}"
+  else
+    warn "Log dashboard was skipped; the stack is still ready."
+    DASHBOARD_URL="not started"
+  fi
+else
+  DASHBOARD_URL="disabled (AEGIS_LOG_DASHBOARD=0)"
+fi
+
 # ===================================================================================================
 # 6. Print the ready URLs + seeded credentials + next steps.
 # ===================================================================================================
@@ -162,6 +174,9 @@ cat <<EOF
 ${C_GREEN}${C_BOLD}✅ Aegis is up.${C_RESET}
 
   ${C_BOLD}Gateway (single entry point)${C_RESET}   http://localhost:4000
+  ${C_BOLD}Live API docs${C_RESET}                 http://localhost:4000/api-docs
+  ${C_BOLD}Raw OpenAPI spec${C_RESET}              http://localhost:4000/api-docs.json
+  ${C_BOLD}Logs + analytics dashboard${C_RESET}     ${DASHBOARD_URL}
   ${C_BOLD}Services (defense-in-depth PEP)${C_RESET}
      user-management   http://localhost:4001
      expense           http://localhost:4002
@@ -170,7 +185,12 @@ ${C_GREEN}${C_BOLD}✅ Aegis is up.${C_RESET}
      workflow          http://localhost:4005
      notification      http://localhost:4006
      invoice           http://localhost:4007
-  ${C_BOLD}Infra${C_RESET}   Postgres :5432   Redis :6379   Kafka :9092
+  ${C_BOLD}Infra${C_RESET}
+     Postgres owner   aegis_owner / aegis_local       postgres://aegis_owner:aegis_local@127.0.0.1:${AEGIS_POSTGRES_PORT:-5432}/aegis
+     Postgres app     aegis_app / aegis_app_pw        postgres://aegis_app:aegis_app_pw@127.0.0.1:${AEGIS_POSTGRES_PORT:-5432}/aegis
+     Redis            redis://127.0.0.1:${AEGIS_REDIS_PORT:-6379}     (no password)
+     Kafka            127.0.0.1:${AEGIS_KAFKA_PORT:-9092}             (PLAINTEXT, no SASL)
+     Inside Docker    postgres:5432, redis:6379, kafka:9092
 
   ${C_BOLD}Seeded demo tenant (login works immediately)${C_RESET}
      x-tenant-id   00000000-0000-4000-8000-000000000001   (Demo Org)
@@ -196,6 +216,7 @@ ${C_GREEN}${C_BOLD}✅ Aegis is up.${C_RESET}
   ${C_BOLD}Manage the stack${C_RESET}
      status     ${COMPOSE[*]} -f ${COMPOSE_FILE} ps
      logs       ${COMPOSE[*]} -f ${COMPOSE_FILE} logs -f gateway expense
+     dashboard  ${DASHBOARD_URL}
      stop       ${COMPOSE[*]} -f ${COMPOSE_FILE} down            (keeps data volumes)
      reset      ${COMPOSE[*]} -f ${COMPOSE_FILE} down -v         (wipes Postgres + Kafka volumes)
      re-run     bash scripts/setup.sh                             (idempotent)

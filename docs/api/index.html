@@ -76,7 +76,7 @@
   // resolve a $ref one level (components only)
   function deref(o){
     if(o&&o["$ref"]){
-      var parts=o["$ref"].replace(/^#//,"").split("/");var cur=spec;
+      var parts=o["$ref"].replace(/^#\//,"").split("/");var cur=spec;
       for(var i=0;i<parts.length;i++)cur=cur[parts[i]];
       return cur;
     }
@@ -136,8 +136,8 @@
   function renderOp(p,m,op){
     var id=slug(m,p);
     var secured=!(op.security&&op.security.length===0);
-    var h="<details class=op id=""+id+""><summary>"+
-      "<span class="verb "+m+"">"+m.toUpperCase()+"</span>"+
+    var h="<details class=op id=\""+id+"\"><summary>"+
+      "<span class=\"verb "+m+"\">"+m.toUpperCase()+"</span>"+
       "<span class=path>"+esc(p)+"</span>"+
       "<span class=summ>"+esc(op.summary||"")+(secured?" <span class=lock>&#128274;</span>":" <span class=lock>public</span>")+"</span>"+
       "</summary><div class=body>";
@@ -175,7 +175,7 @@
     Object.keys(op.responses||{}).forEach(function(code){
       var r=deref(op.responses[code]);
       var cls=code[0]==="2"?"c2":code[0]==="4"?"c4":code[0]==="5"?"c5":"";
-      h+="<tr><td class=""+cls+"">"+esc(code)+"</td><td>"+esc(r.description||"")+"</td></tr>";
+      h+="<tr><td class=\""+cls+"\">"+esc(code)+"</td><td>"+esc(r.description||"")+"</td></tr>";
     });
     h+="</table></div></details>";
     return h;
@@ -196,7 +196,7 @@
     if(!byTag[t])return;
     var tagMeta=(spec.tags||[]).filter(function(x){return x.name===t;})[0]||{};
     var sec=document.createElement("div");sec.className="tag-section";
-    sec.innerHTML="<h2 id="tag-"+t+"">"+esc(t)+"</h2>"+(tagMeta.description?"<p class=tagdesc>"+esc(tagMeta.description)+"</p>":"");
+    sec.innerHTML="<h2 id=\"tag-"+t+"\">"+esc(t)+"</h2>"+(tagMeta.description?"<p class=tagdesc>"+esc(tagMeta.description)+"</p>":"");
     byTag[t].forEach(function(e){sec.insertAdjacentHTML("beforeend",renderOp(e.p,e.m,e.op));});
     main.appendChild(sec);
 
@@ -204,7 +204,7 @@
     byTag[t].forEach(function(e){
       var a=document.createElement("a");a.href="#"+slug(e.m,e.p);
       a.dataset.k=(e.m+" "+e.p+" "+(e.op.summary||"")).toLowerCase();
-      a.innerHTML="<span class="verb "+e.m+"" style=font-size:9px;padding:1px 5px>"+e.m.toUpperCase()+"</span><span style=font-family:monospace>"+esc(e.p.replace(/^\/[a-z-]+\/v1/,"").replace(/^\/health/,"/health")||e.p)+"</span>";
+      a.innerHTML="<span class=\"verb "+e.m+"\" style=font-size:9px;padding:1px 5px>"+e.m.toUpperCase()+"</span><span style=font-family:monospace>"+esc(e.p.replace(/^\/[a-z-]+\/v1/,"").replace(/^\/health/,"/health")||e.p)+"</span>";
       a.onclick=function(){var el=document.getElementById(slug(e.m,e.p));if(el)el.open=true;};
       nav.appendChild(a);
     });

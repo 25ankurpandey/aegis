@@ -34,13 +34,14 @@ bash scripts/dev-up.sh
 ```
 
 This (`scripts/dev-up.sh` → `docker-compose.all.yml`):
-1. Builds the single `aegis:local` image (one image, every role selected by `PROCESS_TYPE`).
+1. Builds per-service images (`aegis/<service>:local`) from `Dockerfile.service`; workers reuse their
+   owning service image with `PROCESS_TYPE=worker`.
 2. Starts `postgres` (runs `scripts/db-init/01-init.sql` → creates the non-owner `aegis_app` role +
    default privileges), `redis`, and `kafka` (single-broker KRaft, no ZooKeeper).
 3. Waits for Postgres health.
-4. Runs the **one-shot `migrate`** container (`PROCESS_TYPE=migration`): applies all 20 schema
-   migrations **then** the 5 seeders (system roles → demo tenant A → casbin policies → approval
-   policies → **demo tenant B**).
+4. Runs the **one-shot `migrate`** container (`PROCESS_TYPE=migration`): applies all 31 schema
+   migrations **then** the 6 seeders (system roles → demo tenants → casbin policies → approval
+   policies → connector configs).
 5. Leaves every service + the two workers running on the `aegis` network.
 
 **Expected** — `docker compose -f docker-compose.all.yml ps` shows all of: `postgres`, `redis`,
@@ -57,18 +58,16 @@ container **exited 0**.
 ### Verify migrations + seeders landed
 
 ```bash
-# Migrations recorded (expect the 0001..0020 list):
+# Migrations recorded (expect 31 migrations through 0031_audit_hash_canonicalization):
 docker compose -f docker-compose.all.yml exec -T postgres \
-  psql -U aegis_owner -d aegis -c "SELECT name FROM migrations ORDER BY name;"
+  psql -U aegis_owner -d aegis -c "SELECT name FROM migrations_meta ORDER BY name;"
 
-# Seeders recorded (expect 0001_system_roles .. 0005_demo_tenant_b):
+# Seeders recorded (expect 0001_system_roles .. 0006_connector_configs):
 docker compose -f docker-compose.all.yml exec -T postgres \
-  psql -U aegis_owner -d aegis -c "SELECT name FROM seeder_meta ORDER BY name;"
+  psql -U aegis_owner -d aegis -c "SELECT name FROM seeders_meta ORDER BY name;"
 ```
 
-> The seeder-meta table name may differ by Umzug config; if `seeder_meta` is empty, check the
-> `migrate` container logs for the `[seed] demo tenant ...` and `[seed] demo tenant B ...` lines —
-> those prove both tenants seeded.
+> These are the Umzug metadata tables configured by `@aegis/db`.
 
 ### Health gate
 

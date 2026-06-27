@@ -10,11 +10,13 @@ import { Config } from '@aegis/service-core';
  *   p = sub, dom, act, eft     a policy:  "<role> in <tenant|*> is allowed/denied <permission>"
  *   g = _, _, _                grouping:  "<user> has <role> in <tenant>" (domain-scoped roles)
  *   e = some(where p.eft==allow)
- *   m = g(r.sub,p.sub,r.dom) && (p.dom==r.dom || p.dom=="*") && r.act==p.act
+ *   m = (r.sub==p.sub || g(r.sub,p.sub,r.dom)) && (p.dom==r.dom || p.dom=="*") && r.act==p.act
  *
- * A `p.dom == "*"` policy line lets a system role (e.g. owner) be reused across every tenant
- * without duplicating one policy row per tenant, while a tenant-specific custom role binds to
- * its own `dom = tenantId`. The request domain `r.dom` is always a concrete tenantId.
+ * The PEP checks both role names and the user id. Direct role subjects (`r.sub == p.sub`) support
+ * principal roles carried in JWT/context, while grouping (`g`) supports direct user-id checks and
+ * dynamic user→role membership. A `p.dom == "*"` policy line lets a system role (e.g. owner) be
+ * reused across every tenant without duplicating one policy row per tenant, while a tenant-specific
+ * custom role binds to its own `dom = tenantId`. The request domain `r.dom` is always concrete.
  */
 export const CASBIN_MODEL = `
 [request_definition]
@@ -30,7 +32,7 @@ g = _, _, _
 e = some(where (p.eft == allow))
 
 [matchers]
-m = g(r.sub, p.sub, r.dom) && (p.dom == r.dom || p.dom == "*") && r.act == p.act
+m = (r.sub == p.sub || g(r.sub, p.sub, r.dom)) && (p.dom == r.dom || p.dom == "*") && r.act == p.act
 `.trim();
 
 /** A p-policy row: role/user `sub`, tenant `dom` (or `*`), permission `act`, effect. */

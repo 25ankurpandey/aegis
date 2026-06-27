@@ -118,13 +118,13 @@ flowchart TB
   pods -.->|"reload from store (fail-closed)"| pg
 ```
 
-### (e) PROCESS_TYPE pod roles — one image, three runtime roles
+### (e) PROCESS_TYPE pod roles — per-service images, three runtime roles
 
-*The same container image runs as an `api`, `worker`, or one-shot `migration` pod, selected by env vars.*
+*Each service image can run as an `api`, `worker`, or one-shot `migration` pod, selected by env vars.*
 
 ```mermaid
 flowchart TB
-  img["One container image<br/>SERVICE_NAME + PROCESS_TYPE"]
+  img["Per-service image<br/>SERVICE_NAME + PROCESS_TYPE"]
   api["api pod<br/>HTTP listener<br/>+ in-process outbox relay"]
   worker["worker pod<br/>Kafka consumers<br/>no HTTP"]
   mig["migration pod<br/>one-shot: migrate<br/>+ migrate-seeders, then exit"]
@@ -146,8 +146,9 @@ flowchart TB
 - **Tenant isolation is in the database.** Every access goes through `withTenantTransaction`, which
   sets `app.current_tenant` transaction-locally so the RESTRICTIVE/FORCE RLS policy is in force; the
   runtime DB role is `NOBYPASSRLS`.
-- **One image, many roles.** `PROCESS_TYPE` (`api` / `worker` / `migration`) + `SERVICE_NAME` select
-  the role at runtime; the outbox relay runs in-process inside producer pods (no separate relay pod).
+- **Per-service images, many roles.** `PROCESS_TYPE` (`api` / `worker` / `migration`) + `SERVICE_NAME`
+  select the role at runtime; the outbox relay runs in-process inside producer pods (no separate
+  relay pod). APIs and workers are separate containers and scale independently.
 
 ---
 
@@ -157,7 +158,7 @@ Read the five chapters in order for the full picture, or jump to the one you nee
 
 | # | Chapter | One-line summary |
 |---|---|---|
-| **01** | [System Overview](./architecture/01-system-overview.md) | The whole picture: the 8 services + cli, the Postgres/Redis/Kafka infra, the single-image `PROCESS_TYPE` model, inter-service topology, and request-context propagation end-to-end. |
+| **01** | [System Overview](./architecture/01-system-overview.md) | The whole picture: the 8 services + cli, the Postgres/Redis/Kafka infra, the per-service image + `PROCESS_TYPE` model, inter-service topology, and request-context propagation end-to-end. |
 | **02** | [Rules & Workflow](./architecture/02-rules-and-workflow.md) | The `workflow` service as a rules-as-data engine: the four rules tables, how a rule is authored and executed, the AND/OR step semantics, the six built-in actions, and the end-to-end auto-approval flow. |
 | **03** | [Approvals & Expense](./architecture/03-approvals-and-expense.md) | The shared `@aegis/approvals` multi-level engine (policies, resolver, sequential/parallel quorum, the vote ledger) and the expense lifecycle that consumes it — plus how invoice & payroll reuse it (incl. payroll maker-checker SoD). |
 | **04** | [Services](./architecture/04-services.md) | Each business service (user-management, payroll, invoice, reporting, notification) and the cross-cutting libs (connectors, audit, activity) — purpose, key tables, endpoints, and signature flows. |

@@ -5,6 +5,7 @@ import * as casbinPolicies from './0003_casbin_policies';
 import * as approvalPolicies from './0004_approval_policies';
 import * as demoTenantB from './0005_demo_tenant_b';
 import * as connectorConfigs from './0006_connector_configs';
+import * as rbacReconcile from './0007_rbac_catalog_reconcile';
 
 /** Ordered list of data seeders (system roles + base permission catalog, demo tenant, etc.). */
 export const seeders: MigrationModule[] = [
@@ -20,4 +21,7 @@ export const seeders: MigrationModule[] = [
   { name: '0005_demo_tenant_b', up: demoTenantB.up, down: demoTenantB.down },
   // Neutral mock ERP connector bindings for both demo tenants.
   { name: '0006_connector_configs', up: connectorConfigs.up, down: connectorConfigs.down },
+  // Additive top-up for older DBs whose base RBAC seeders already ran before newer permissions
+  // (teams/tags/connectors/etc.) were added to the enum/catalog.
+  { name: '0007_rbac_catalog_reconcile', up: rbacReconcile.up, down: rbacReconcile.down },
 ];

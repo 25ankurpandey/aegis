@@ -77,6 +77,126 @@ path.
 
 ---
 
+## Local Development
+
+This section is for an engineer who wants to **develop or extend `user-management`
+itself**. The service is an Nx application (`apps/user-management`) with a
+`serve` target (`@nx/js:node`) that runs it on **HTTP port 4001** with hot-reload.
+
+### Prerequisites
+
+- **Node 22 + npm**, **Docker** (for the Postgres/Redis/Kafka infra).
+- `npm ci` at the **repo root** (one install for the whole monorepo).
+
+### 1. Bring up the infra it needs (Postgres + Redis + Kafka)
+
+This service needs **Postgres** (system of record, RLS-enforced), **Redis** (PIP /
+policy-reload cache), and **Kafka** (the `@aegis/events` outbox bus). Two ways:
+
+- **(a) Whole stack, then develop against it** — `bash scripts/setup.sh` builds
+  the images, brings up the full network (Postgres + Redis + Kafka + all 9 HTTP
+  services + workers), runs migrations **and** seeders, and polls `/health`. Use
+  this when you want a complete, seeded environment to point your local code at.
+- **(b) Just the infra** — bring up only the backing services and migrate once:
+
+  ```bash
+  docker compose -f docker-compose.all.yml up -d postgres redis kafka
+  docker compose -f docker-compose.all.yml run --rm migrate   # migrations THEN seeders, idempotent
+  ```
+
+  This gives you Postgres/Redis/Kafka on their host-published ports without
+  running the containerized `user-management` (so your local `nx serve` owns
+  port 4001).
+
+### 2. Run THIS service locally with hot-reload
+
+```bash
+npx nx serve user-management        # @nx/js:node → builds user-management:build, runs on :4001, watches
+```
+
+> **CRITICAL GOTCHA — the committed `.env` uses Docker-network hostnames.**
+> `apps/user-management/.env` is wired for **inside the compose network**:
+> `postgres:5432`, `redis:6379`, `kafka:9092`, and inter-service URLs like
+> `user-management:4001` / `gateway:4000`. Those hostnames **do not resolve**
+> when you run `nx serve` on your host. For local serve you must point each of
+> them at the **docker-published host ports** (`127.0.0.1`). Override them via a
+> local env override (e.g. a gitignored `.env.local` / shell export — do **not**
+> edit the committed `.env`):
+>
+> ```dotenv
+> DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+> REDIS_URL=redis://127.0.0.1:6379
+> KAFKA_BROKERS=127.0.0.1:9092
+> # inter-service URLs only matter when you exercise an s2s call path locally:
+> GATEWAY_URL=http://127.0.0.1:4000
+> USER_MANAGEMENT_URL=http://127.0.0.1:4001
+> EXPENSE_URL=http://127.0.0.1:4002
+> PAYROLL_URL=http://127.0.0.1:4003
+> REPORTING_URL=http://127.0.0.1:4004
+> WORKFLOW_URL=http://127.0.0.1:4005
+> NOTIFICATION_URL=http://127.0.0.1:4006
+> INVOICE_URL=http://127.0.0.1:4007
+> # JWKS_URL is self-referential; local validation is symmetric via AUTH_JWT_SECRET,
+> # so rewrite it to 127.0.0.1:4001 only if you exercise a JWKS fetch path.
+> JWKS_URL=http://127.0.0.1:4001/.well-known/jwks.json
+> ```
+>
+> The infra trio (`DATABASE_URL`, `REDIS_URL`, `KAFKA_BROKERS`) is **always**
+> required for the service to boot; the `*_URL` rewrites only matter for the
+> service-to-service call paths you actually hit. `DATABASE_URL` and
+> `AUTH_JWT_SECRET` are the hard-required boot vars (`requiredEnv` in
+> `bootstrap.ts`). This service runs as `PROCESS_TYPE=api` (no separate worker
+> role); the outbox relay runs in-process on the api pod.
+
+### 3. Port + verifying it's up
+
+The service listens on **4001**. Liveness:
+
+```bash
+curl localhost:4001/health
+```
+
+In normal use you don't call the service directly — you go **through the
+gateway** at `http://localhost:4000/user-management/v1/...`. The gateway
+validates the JWT at the edge and forwards with propagated headers; each service
+**re-validates auth via its own PEP** (defense in depth), so a direct
+`:4001` call still requires a valid token + the fail-closed context headers on
+every route except `/health` and the public IdP bootstrap routes.
+
+### 4. Runtime dependencies
+
+When running locally `user-management` talks to:
+
+- **Postgres** (`DATABASE_URL`) — its system of record, under RLS (the app role
+  is a non-owner; `SET LOCAL app.current_tenant` per transaction).
+- **Redis** (`REDIS_URL`) — PIP attribute cache + the cross-pod policy-reload bus
+  (`initPolicyReload`), fail-open if Redis is down.
+- **Kafka** (`KAFKA_BROKERS`) — the `@aegis/events` bus. As the IdP/PAP, this
+  service is mostly a **producer** of `identity.*` topics (registered, role
+  assigned/revoked/updated, policy changed, invite/session events — see §7) via
+  the transactional outbox; consumers (PIP, audit, notification, reporting) live
+  in other services. If `KAFKA_BROKERS` is unset it falls back to an in-process
+  bus.
+- **Itself as the IdP** — `user-management` issues the JWTs every other service
+  validates. Locally validation is **symmetric** via `AUTH_JWT_SECRET`
+  (`JWKS_URL` is self-referential and only used by the production JWKS adapter
+  seam, §4).
+- **Other services (s2s)** — only on specific call paths; resolved from the
+  `*_URL` env vars above via `@aegis/service-core`'s `HttpClient`. It has no ERP
+  connector and no Kafka worker role of its own.
+
+### 5. Test + build
+
+```bash
+npx nx test user-management     # Jest (apps/user-management/jest.config.ts)
+npx nx build user-management    # webpack/tsc production build — runs the production type-check
+```
+
+The `build` target compiles with `tsc` against `tsconfig.app.json`, so it is the
+quickest way to confirm a change type-checks the way CI will.
+
+---
+
 ## 2. Domain model
 
 All tables follow the platform conventions ([`../../AGENTS.md`](../../AGENTS.md)

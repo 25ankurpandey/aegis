@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet, httpPut } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -24,7 +24,7 @@ export class TenantConfigController {
 
   @httpPut('/config/:key', authenticate(), authorize(Permission.TenantManage), validate(setConfigSchema))
   async setConfig(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.svc.setConfig({ key: req.params['key'], value: req.body.value }));
+    res.status(200).json(await this.svc.setConfig({ key: routeParam(req, 'key'), value: req.body.value }));
   }
 
   @httpGet('/features', authenticate(), authorize(Permission.TenantView))
@@ -34,6 +34,6 @@ export class TenantConfigController {
 
   @httpPut('/features/:flag', authenticate(), authorize(Permission.TenantManage), validate(setFlagSchema))
   async setFlag(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.svc.setFlag({ flag: req.params['flag'], enabled: req.body.enabled }));
+    res.status(200).json(await this.svc.setFlag({ flag: routeParam(req, 'flag'), enabled: req.body.enabled }));
   }
 }

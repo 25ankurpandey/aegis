@@ -90,11 +90,11 @@ Defined and wired together in `docker-compose.all.yml`.
 
 ---
 
-## 3. The single-image + `PROCESS_TYPE` model
+## 3. The per-service image + `PROCESS_TYPE` model
 
-One image (`Dockerfile`) is built once with `nx run-many -t build --all --prod`, guaranteeing the
-API, worker, and migration roles are byte-identical. The container entrypoint `scripts/start.sh`
-branches on `PROCESS_TYPE` (default `api`), and `SERVICE_NAME` picks which app's bundle to run:
+Each service image (`Dockerfile.service`) is built from the shared Nx monorepo with
+`nx run <service>:build --prod`. The container entrypoint `scripts/start.sh` branches on
+`PROCESS_TYPE` (default `api`), and `SERVICE_NAME` picks which app's bundle to run:
 
 ```sh
 case "$PROCESS_TYPE" in

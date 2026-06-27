@@ -59,6 +59,125 @@ Security** on every tenant-scoped table, wraps every route
 
 ---
 
+## Local Development
+
+This service is an Nx application (`apps/payroll`) that runs as a standalone Node process on
+**HTTP port 4003**. The notes below are for an engineer extending **this** service.
+
+### Prerequisites
+
+- **Node 22** + **npm** (the repo pins Node 22; the production `build` runs a full type-check).
+- **Docker** + Docker Compose (for the Postgres / Redis / Kafka it depends on).
+- `npm ci` at the **repo root** (this is an Nx monorepo — install once at the root, not per-app).
+
+### Bring up the infra it needs
+
+Payroll talks to **Postgres**, **Redis**, and **Kafka**. Two ways to stand them up:
+
+- **(a) Whole stack, then develop against it** — one command builds every service image and brings
+  up infra + all nine services + the Kafka workers + runs migrations and seeders:
+
+  ```bash
+  bash scripts/setup.sh
+  ```
+
+  Use this when you want a fully seeded platform (gateway on 4000, services on 4001–4007) and only
+  intend to point your local `nx serve` at the already-running infra.
+
+- **(b) Just the infra** — start only the backing services, then run migrations once:
+
+  ```bash
+  docker compose -f docker-compose.all.yml up -d postgres redis kafka
+  docker compose -f docker-compose.all.yml run --rm migrate   # migrations THEN seeders; idempotent
+  ```
+
+Both publish the infra on host ports `127.0.0.1:5432` (Postgres), `127.0.0.1:6379` (Redis), and
+`127.0.0.1:9092` (Kafka).
+
+### Run THIS service locally (hot-reload)
+
+The `serve` target uses the `@nx/js:node` executor and rebuilds + restarts on change:
+
+```bash
+npx nx serve payroll
+```
+
+> **Critical gotcha — Docker hostnames don't resolve outside Docker.** The committed
+> `apps/payroll/.env` is written for the **Docker network**: `DATABASE_URL` points at `postgres:5432`,
+> `REDIS_URL` at `redis:6379`, `KAFKA_BROKERS` at `kafka:9092`, and the inter-service URLs at compose
+> service names (`user-management:4001`, `gateway:4000`, …). When you run `nx serve` on the host,
+> those names **do not resolve** and startup fails on the first connection. Point them at the
+> docker-published host ports via a local env override (e.g. an uncommitted `.env.local` or exported
+> shell vars) — do **not** edit the committed `.env`:
+>
+> ```bash
+> DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+> REDIS_URL=redis://127.0.0.1:6379
+> KAFKA_BROKERS=127.0.0.1:9092
+> JWKS_URL=http://127.0.0.1:4001/.well-known/jwks.json   # user-management
+> GATEWAY_URL=http://127.0.0.1:4000
+> USER_MANAGEMENT_URL=http://127.0.0.1:4001
+> EXPENSE_URL=http://127.0.0.1:4002
+> REPORTING_URL=http://127.0.0.1:4004
+> WORKFLOW_URL=http://127.0.0.1:4005
+> NOTIFICATION_URL=http://127.0.0.1:4006
+> INVOICE_URL=http://127.0.0.1:4007
+> ```
+
+The vars this service reads from its `.env` that need the localhost rewrite for host-side `nx serve`
+are: **`DATABASE_URL`**, **`REDIS_URL`**, **`KAFKA_BROKERS`**, **`JWKS_URL`**, **`GATEWAY_URL`**,
+**`USER_MANAGEMENT_URL`**, **`EXPENSE_URL`**, **`REPORTING_URL`**, **`WORKFLOW_URL`**,
+**`NOTIFICATION_URL`**, **`INVOICE_URL`**, and **`PAYROLL_URL`** (its own self-URL). The dummy secrets
+(`AUTH_JWT_SECRET`, `INTERNAL_JWT_SECRET`, `FIELD_ENCRYPTION_KEY`) work as-is for local dev.
+`FIELD_ENCRYPTION_KEY` is **mandatory** in every role — startup fails without it.
+
+### Port & health check
+
+The API role listens on **`PORT=4003`**. Verify it's up:
+
+```bash
+curl localhost:4003/health
+```
+
+In normal use the service is reached **through the gateway**, not directly:
+
+```
+http://localhost:4000/payroll/v1/...
+```
+
+The gateway is an edge proxy only — each service re-validates the caller's token against its own PEP
+(`authenticate → authorize(permission) → handler`), so hitting `:4003` directly still requires a
+valid token.
+
+### Runtime dependencies
+
+What payroll calls at runtime (from the source):
+
+- **Postgres** — the system of record (RLS enforced via the non-owner `aegis_app` role).
+- **Redis** — cache only (`CacheAdapter`).
+- **Kafka** (`@aegis/events`) — the event bus. The API role runs the in-process **transactional-outbox
+  relay** to drain staged events; when `KAFKA_BROKERS` is unset it falls back to an in-process bus for
+  single-process dev.
+- **user-management** — token validation via **JWKS** (`JWKS_URL` → `.../.well-known/jwks.json`).
+- **Inter-service S2S** — signed internal token + origin gate to siblings (gateway, expense,
+  reporting, workflow, notification, invoice) via their `*_URL` env vars.
+- **`@aegis/connectors`** — the ERP-push framework (built-in **mock** connectors registered on
+  startup; no real ERP is contacted).
+
+**Worker role (`PROCESS_TYPE=worker`):** the same binary, started with no HTTP server, runs the Kafka
+consumers — it subscribes to **`ApprovalCompleted`** (advances stranded `Calculated` pay runs) and
+**`RecordUpdated`** (applies `assign_team` / `add_tag`). A worker **requires** a real broker:
+`DATABASE_URL`, `AUTH_JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, and `KAFKA_BROKERS` are all required.
+
+### Test & build
+
+```bash
+npx nx test payroll     # Jest unit/integration tests for this service
+npx nx build payroll    # production build — runs the production TypeScript type-check
+```
+
+---
+
 ## 2. Domain model
 
 All money is stored as **integer minor units**. All PKs are **UUID v4**. Every tenant-scoped

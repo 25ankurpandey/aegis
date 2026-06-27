@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet, httpPost } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { CommonShape, NotificationShape } from '@aegis/shared-types';
 import { ApiConstants } from '@aegis/shared-constants';
@@ -50,7 +50,7 @@ export class NotificationController {
     validate(idParamSchema, 'params'),
   )
   async get(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.notifications.getForUser(req.params['id']) });
+    res.status(200).json({ data: await this.notifications.getForUser(routeParam(req, 'id')) });
   }
 
   @httpPost(
@@ -60,7 +60,7 @@ export class NotificationController {
     validate(idParamSchema, 'params'),
   )
   async markRead(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.notifications.markRead(req.params['id']));
+    res.status(200).json(await this.notifications.markRead(routeParam(req, 'id')));
   }
 
   @httpGet(

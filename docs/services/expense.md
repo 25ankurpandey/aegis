@@ -105,8 +105,156 @@ route (see [`../02-patterns.md`](../02-patterns.md) and
 [`../08-api-conventions.md`](../08-api-conventions.md)). It shares
 [`@aegis/service-core`](../architecture/04-services.md) and
 [`@aegis/access-control`](../03-access-control-model.md), enforces tenant RLS via
-[`@aegis/db`](../04-multi-tenancy.md), and runs from the single multi-purpose image with
+[`@aegis/db`](../04-multi-tenancy.md), and runs from the expense service image with
 `PROCESS_TYPE=api`.
+
+---
+
+## Local Development
+
+For an engineer working on **this** service. `expense` is a normal Nx project in the
+monorepo; you run it with `nx serve` against infra brought up by Docker. The one sharp edge
+is the committed `apps/expense/.env`, whose hostnames are **Docker-network names** that do
+not resolve from your host — see [§ The `.env` host-port gotcha](#the-env-host-port-gotcha).
+
+### Prerequisites
+
+- **Node 22 + npm** (the repo's `.nvmrc`/`engines` pin Node 22; mismatched majors fail the build).
+- **Docker** (Desktop or Engine + Compose v2) for the infra — Postgres, Redis, Kafka.
+- `npm ci` **at the repo root** once, to install the workspace (Nx + all `@aegis/*` libs).
+
+### 1. Bring up the infra it needs (Postgres + Redis + Kafka)
+
+`expense` needs Postgres (RLS), Redis (cache), and Kafka (event bus). Two ways:
+
+**(a) Whole stack, then develop against it** — the one-command path. Builds every image,
+starts infra + all nine services + the workers, runs migrations **and** seeders, and polls
+`/health`:
+
+```bash
+bash scripts/setup.sh
+```
+
+You can then iterate on `expense` by editing code and either rebuilding its image or — more
+commonly — stopping the dockerized `expense` and running it locally (option below) while the
+rest of the stack keeps serving its dependencies.
+
+**(b) Just the infra** — lightest loop; run only `expense` from source. Start the three
+backing services and run migrations **once**:
+
+```bash
+docker compose -f docker-compose.all.yml up -d postgres redis kafka
+docker compose -f docker-compose.all.yml run --rm migrate   # PROCESS_TYPE=migration → migrations then seeders (idempotent)
+```
+
+The compose file publishes the infra on host ports `5432` (Postgres), `6379` (Redis), and
+`9092` (Kafka) — overridable via `AEGIS_POSTGRES_PORT` / `AEGIS_REDIS_PORT` /
+`AEGIS_KAFKA_PORT`.
+
+### 2. Run this service locally with hot-reload
+
+```bash
+npx nx serve expense
+```
+
+The `serve` target uses the `@nx/js:node` executor against `expense:build`, so saving a
+source file rebuilds and restarts the process. It listens on **port 4002** (`PORT` in the
+`.env`, `Config.int('PORT', 4002)`).
+
+#### The `.env` host-port gotcha
+
+`createService(...)` loads `apps/expense/.env` for direct (non-Docker) runs, but those
+values are written for the **Docker network** — `postgres:5432`, `redis:6379`, `kafka:9092`.
+From your host those names don't resolve, so a bare `nx serve expense` will fail to reach
+infra. Point the infra vars this service actually reads at the **docker-published host
+ports** before serving. `dotenv` loads with `override: false`, so a real environment
+variable (or an `AEGIS_ENV_FILE` you point at) **wins** over the committed `.env` — the
+cleanest override is a local, git-ignored env file:
+
+```bash
+# apps/expense/.env.local  (point AEGIS_ENV_FILE at it, or export these in your shell)
+DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+REDIS_URL=redis://127.0.0.1:6379
+KAFKA_BROKERS=127.0.0.1:9092
+```
+
+```bash
+AEGIS_ENV_FILE=apps/expense/.env.local npx nx serve expense
+```
+
+> **Kafka note.** The broker advertises `PLAINTEXT://kafka:9092` only. `127.0.0.1:9092`
+> reaches it for the initial connect from the host; if your client follows the advertised
+> address you may need to add a host alias (`127.0.0.1 kafka`) or run the worker role inside
+> Docker. The **API** role does not require Kafka — it publishes through the in-process
+> outbox relay and only talks to Kafka when `KAFKA_BROKERS` is set.
+
+**Vars in `.env` that need the localhost rewrite for `nx serve`** (i.e. the ones this
+service's code actually reads at runtime):
+
+| Var             | `.env` (Docker) value                                       | Local override                  | Read by                                                  |
+| --------------- | ----------------------------------------------------------- | ------------------------------- | -------------------------------------------------------- |
+| `DATABASE_URL`  | `postgres://aegis_app:aegis_app_pw@postgres:5432/aegis`     | `…@127.0.0.1:5432/aegis`        | `@aegis/db` connection + `@aegis/access-control` enforcer |
+| `REDIS_URL`     | `redis://redis:6379`                                        | `redis://127.0.0.1:6379`        | `@aegis/service-core` `CacheAdapter`                     |
+| `KAFKA_BROKERS` | `kafka:9092`                                                | `127.0.0.1:9092`                | `@aegis/events` bus (worker role; API only if set)       |
+
+> **What you do _not_ need to rewrite.** The committed `.env` also carries the inter-service
+> URLs (`GATEWAY_URL`, `USER_MANAGEMENT_URL`, `EXPENSE_URL`, `PAYROLL_URL`, …) and
+> `JWKS_URL`. The current `expense` code does **not** make outbound `HttpClient` calls to
+> sibling services, and the local PEP validates the user JWT with the **HS256
+> `AUTH_JWT_SECRET`** shared secret (`libs/access-control/src/pep.ts`), not `JWKS_URL` — the
+> RS256/JWKS swap is a production seam. So those URL vars are inert for a local `nx serve`
+> and don't need the host-port rewrite. Keep the committed dummy `AUTH_JWT_SECRET` (and
+> `INTERNAL_JWT_SECRET`) so tokens validate.
+
+### 3. Verify it's up
+
+```bash
+curl localhost:4002/health            # liveness
+curl 'localhost:4002/health?details=true'   # + dependency checks
+```
+
+`/health` is the only unauthenticated route. In normal use you don't hit `4002` directly —
+the service is reached **through the gateway** at
+`http://localhost:4000/expense/v1/...`, which forwards the user JWT plus `X-Tenant-Id` /
+`X-Correlation-Id`. Each service **re-validates auth via its own PEP** (§4), so a request
+that bypasses the gateway still needs a valid `Authorization: Bearer <user JWT>`.
+
+### 4. Runtime dependencies
+
+What `expense` calls when running, and why:
+
+- **Postgres** (`DATABASE_URL`) — domain tables + the shared `approval_*` tables, all under
+  tenant **RLS** (`SET LOCAL app.current_tenant` per txn). The runtime role (`aegis_app`) is
+  a non-owner without `BYPASSRLS`.
+- **Redis** (`REDIS_URL`) — cache only (e.g. PDP role→permission lookups); defaults to
+  `redis://localhost:6379` if unset.
+- **Kafka** (`KAFKA_BROKERS`) — the event bus. As an **API** pod it publishes the topics in
+  §9.1 via the in-process **outbox relay**; as a **worker** (`PROCESS_TYPE=worker`) it has
+  no HTTP server and instead **consumes** `approval.completed` (advance stranded records) and
+  `record.updated` (apply `assign_team` / `add_tag`) — see `apps/expense/src/consumers/`. A
+  worker hard-requires a real broker (`Config.requireAll(['DATABASE_URL','AUTH_JWT_SECRET','KAFKA_BROKERS'])`).
+- **`user-management`** — only as the PIP/PDP attribute source (roles, `user_hierarchy`,
+  memberships) feeding the access-control decision; identity/JWT minting lives there. The
+  local HS256 path validates tokens in-process, so no live HTTP call is made for token
+  validation in dev.
+- **`@aegis/connectors` (mock ERP)** — on `APPROVED`, the report is staged as a
+  `connector.push.requested` event consumed by the **workflow** worker, which pushes through
+  the pluggable connector framework (mock `LedgerOne` / `Finovo` / `AcctBridge`). No real ERP
+  is contacted (§8).
+
+The API role requires `DATABASE_URL` + `AUTH_JWT_SECRET`; the worker role additionally
+requires `KAFKA_BROKERS`.
+
+### 5. Test + build for this service
+
+```bash
+npx nx test expense     # Jest unit tests (apps/expense/jest.config.ts)
+npx nx build expense    # webpack/tsc production build — runs the prod type-check
+```
+
+`build` is the `serve` target's `buildTarget`, so a green `nx serve` implies the build type-
+checks; run `nx build expense` explicitly before pushing to catch production-only type
+errors. `npx nx lint expense` runs ESLint.
 
 ---
 

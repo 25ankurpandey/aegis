@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet } from 'inversify-express-utils';
-import { internalAuth, validate } from '@aegis/service-core';
+import { internalAuth, routeParam, validate } from '@aegis/service-core';
 import type { UserManagementShape } from '@aegis/shared-types';
 import { RecipientDirectoryService } from '../services/recipient-directory.service';
 import {
@@ -18,7 +18,7 @@ export class InternalRecipientController {
 
   @httpGet('/users/:id/contact', internalAuth(), validate(userContactParamSchema, 'params'))
   async getUserContact(req: Request, res: Response): Promise<void> {
-    res.status(200).json(await this.directory.getUserContact(req.params['id']));
+    res.status(200).json(await this.directory.getUserContact(routeParam(req, 'id')));
   }
 
   @httpGet('/recipients', internalAuth(), validate(recipientDirectoryQuerySchema, 'query'))

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Aegis container entrypoint.
-# Selects runtime behavior by PROCESS_TYPE so one image serves every role.
+# Selects runtime behavior by PROCESS_TYPE inside one service image.
 #   PROCESS_TYPE=api        -> run the HTTP service named by SERVICE_NAME
 #   PROCESS_TYPE=worker     -> run the background worker for SERVICE_NAME
 #   PROCESS_TYPE=migration  -> run DB migrations + seeders, then exit

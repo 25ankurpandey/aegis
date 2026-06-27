@@ -18,6 +18,7 @@ export * from './auth/internal-auth';
 export * from './http/http-client';
 export * from './http/response-envelope';
 export * from './http/record-annotation-query';
+export * from './http/route-params';
 export * from './config/config';
 export * from './config/service-env';
 export * from './config/secrets';

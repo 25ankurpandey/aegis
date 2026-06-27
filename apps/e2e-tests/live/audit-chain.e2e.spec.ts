@@ -30,6 +30,18 @@ interface AuditRow {
   hash: string;
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value instanceof Date) return value.toISOString();
+  if (!value || typeof value !== 'object') return value;
+  return Object.keys(value as Record<string, unknown>)
+    .sort()
+    .reduce<Record<string, unknown>>((acc, key) => {
+      acc[key] = canonicalize((value as Record<string, unknown>)[key]);
+      return acc;
+    }, {});
+}
+
 /** Canonical hash recipe — must stay byte-identical to libs/audit/src/hash.ts:computeAuditHash. */
 function computeAuditHash(prevHash: string, r: AuditRow): string {
   const canonical = JSON.stringify([
@@ -39,8 +51,8 @@ function computeAuditHash(prevHash: string, r: AuditRow): string {
     r.outcome,
     r.resource_type ?? null,
     r.resource_id ?? null,
-    r.details,
-    r.permissions,
+    canonicalize(r.details),
+    canonicalize(r.permissions),
   ]);
   return createHash('sha256').update(`${prevHash}|${canonical}`).digest('hex');
 }

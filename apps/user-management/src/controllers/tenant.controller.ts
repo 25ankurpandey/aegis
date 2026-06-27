@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { ApiConstants } from '@aegis/shared-constants';
 import { Permission } from '@aegis/shared-enums';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -25,6 +25,6 @@ export class TenantController {
 
   @httpGet('/users/:id', authenticate(), authorize(Permission.UserView), validate(idParamSchema, 'params'))
   async getUser(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.tenants.getUser(req.params['id']) });
+    res.status(200).json({ data: await this.tenants.getUser(routeParam(req, 'id')) });
   }
 }

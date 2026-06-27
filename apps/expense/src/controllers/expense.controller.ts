@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet, httpPost } from 'inversify-express-utils';
-import { validate } from '@aegis/service-core';
+import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
 import { authenticate, authorize } from '@aegis/access-control';
@@ -31,6 +31,6 @@ export class ExpenseController {
     validate(expenseIdParamSchema, 'params'),
   )
   async getExpense(req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: await this.expense.getExpense(req.params['id']) });
+    res.status(200).json({ data: await this.expense.getExpense(routeParam(req, 'id')) });
   }
 }

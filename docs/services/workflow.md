@@ -60,6 +60,90 @@ Typical rules:
 
 ---
 
+## Local Development
+
+For an engineer working on **this** service. `workflow` is a normal Nx project; you run it with
+`nx serve` against infra brought up by Docker. It is unusual in that it has **two runtime roles** from
+one bundle, selected by `PROCESS_TYPE`: the **api** role (HTTP — rules CRUD at port `4005`) and the
+**worker** role (the Kafka consumer that actually runs rules when domain events arrive). To exercise
+rule execution end-to-end locally you generally need **both**. The one sharp edge is the committed
+`apps/workflow/.env`, whose hostnames are **Docker-network names** that do not resolve from your host —
+see [§ The `.env` host-port gotcha](#the-env-host-port-gotcha-workflow).
+
+### Prerequisites
+
+- **Node 22 + npm** (mismatched majors fail the build).
+- **Docker** (Desktop or Engine + Compose v2) for the infra — Postgres, Redis, Kafka.
+- `npm ci` **at the repo root** once, to install the workspace (Nx + all `@aegis/*` libs).
+
+### 1. Bring up the infra it needs (Postgres + Redis + Kafka)
+
+`workflow` needs Postgres (rules/rule-steps/rule-actions tables), Redis (cache), and Kafka (it both
+**consumes** domain events and **produces** `approval.command` / `notification.requested`). Two ways:
+
+**(a) Whole stack, then develop against it** — `bash scripts/setup.sh` builds every image and starts
+infra + all nine services + the workflow/notification workers, runs migrations **and** seeders, and
+polls `/health`.
+
+**(b) Just the infra** — lightest loop; run only `workflow` from source:
+
+```bash
+docker compose -f docker-compose.all.yml up -d postgres redis kafka
+docker compose -f docker-compose.all.yml run --rm migrate   # PROCESS_TYPE=migration → migrations then seeders (idempotent)
+```
+
+Infra is published on host ports `5432` / `6379` / `9092` (overridable via `AEGIS_POSTGRES_PORT` /
+`AEGIS_REDIS_PORT` / `AEGIS_KAFKA_PORT`).
+
+### 2. Run this service locally with hot-reload
+
+```bash
+npx nx serve workflow                      # api role — rules CRUD on port 4005
+PROCESS_TYPE=worker npx nx serve workflow  # worker role — Kafka consumer that runs rules
+```
+
+The `serve` target uses the `@nx/js:node` executor, so saving a source file rebuilds and restarts.
+The api listens on **port 4005** (`PORT` in the `.env`). Run the **worker** in a second terminal when
+you want a rule to actually fire on a domain event — without it, rules are stored but never executed.
+
+#### The `.env` host-port gotcha {#the-env-host-port-gotcha-workflow}
+
+`apps/workflow/.env` is written for the **Docker network** — `postgres:5432`, `redis:6379`,
+`kafka:9092`, `JWKS_URL=http://user-management:4001/...`, and the `*_URL` inter-service hostnames.
+None of these resolve from your host. For a local `nx serve`, override them to the published host
+ports (e.g. via a shell export or a local env file):
+
+```bash
+DATABASE_URL=postgres://aegis_app:aegis_app_pw@127.0.0.1:5432/aegis
+REDIS_URL=redis://127.0.0.1:6379
+KAFKA_BROKERS=127.0.0.1:9092
+JWKS_URL=http://127.0.0.1:4001/.well-known/jwks.json      # user-management must be reachable for token validation
+USER_MANAGEMENT_URL=http://127.0.0.1:4001                 # and the other *_URL vars → 127.0.0.1:400x as needed
+```
+
+### 3. Verify it's up
+
+```bash
+curl localhost:4005/health          # direct
+# In normal use it is reached THROUGH the gateway, which re-validates auth at this service's own PEP:
+curl http://localhost:4000/workflow/v1/rules -H "authorization: Bearer <jwt>" -H "x-tenant-id: <uuid>"
+```
+
+### 4. Runtime dependencies
+
+- **Kafka** — consumes `expense.report.submitted` / `record.created` / `record.updated` /
+  `approval.completed` (see [§5 Trigger wiring](#5-trigger-wiring--domain-events-on-the-bus)) and
+  **produces** `approval.command` (auto-approve / assign-policy) and `notification.requested`.
+- **Postgres** — the `rules`, `rule_steps`, `rule_actions`, `rule_audit_logs` tables (tenant-scoped via RLS).
+- **user-management** — JWKS endpoint for Bearer-token validation at this service's PEP.
+
+### 5. Test + build
+
+```bash
+npx nx test workflow      # this service's unit/integration tests
+npx nx build workflow     # production bundle — runs the FULL type-check (stricter than dev serve)
+```
+
 ## 2. Data model
 
 Four tables, all tenant-scoped (`tenant_id NOT NULL` + RLS). This mirrors
