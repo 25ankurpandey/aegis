@@ -31,11 +31,9 @@ unreadable. Below it is split into **five focused views**, each independently le
 north-south edge, the data plane, async eventing, the Casbin policy-reload bus, and the
 `PROCESS_TYPE` pod roles. Read them in order for the full picture.
 
-> **Prefer one big picture?** See the [container diagram](architecture/system-overview.svg) (C4 Level 2)
-> — every service, worker, and infra component on one page with proper shapes + a legend. For the
-> **interactive** version (pan / zoom · click a container to see only its connections) open
-> [`system-container.html`](architecture/system-container.html), and walk a request through the system
-> in [`flow-request-lifecycle.html`](architecture/flow-request-lifecycle.html).
+> **Prefer one big picture?** See the [container diagram](architecture/system-container.svg) (C4 Level 2)
+> — every service, worker, and infra component on one page with proper shapes + a legend. The editable
+> source is [`system-container.drawio`](architecture/system-container.drawio) (open in draw.io to zoom/edit).
 
 ### (a) Edge — north-south request path
 

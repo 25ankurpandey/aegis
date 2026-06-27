@@ -16,10 +16,10 @@ This page is the index to every doc. Where any doc disagrees with [`../SPEC.md`]
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the single entry point: whole-system picture in one
   diagram, the `apps/*` vs `libs/*` split, the request lifecycle, and links into every chapter
   below. Read this first.
-- [`architecture/system-overview.svg`](architecture/system-overview.svg) — the **container diagram**
+- [`architecture/system-container.svg`](architecture/system-container.svg) — the **container diagram**
   (C4 L2): every service, worker, and infra component with proper shapes + legend (renders inline on
-  GitHub). Interactive version (pan / zoom · click-to-explore):
-  [`architecture/system-container.html`](architecture/system-container.html).
+  GitHub). Editable source (open in draw.io):
+  [`architecture/system-container.drawio`](architecture/system-container.drawio).
 
 ---
 

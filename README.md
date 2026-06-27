@@ -63,16 +63,16 @@ Redis. Deployed as **one container image per service** (role chosen by `PROCESS_
 
 ## Architecture
 
-![Aegis system architecture — C4 container view](docs/architecture/system-overview.svg)
+![Aegis system architecture — C4 container diagram (draw.io)](docs/architecture/system-container.svg)
 
 *The whole platform on one page: a client → the gateway → seven services (each enforcing authorization at
 its own PEP) → the shared access-control PDP → PostgreSQL (RLS) / Redis / Kafka, with the workflow +
 notification Kafka workers and the migration CLI.*
 
-▶ **Explore it interactively** — pan / zoom and **click a container to see only its connections**:
-[system-container.html](docs/architecture/system-container.html) · walk a request end-to-end in
-[flow-request-lifecycle.html](docs/architecture/flow-request-lifecycle.html) (open in a browser).
-Full written deep-dive with focused diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+▶ **Edit or explore it** — the diagram above is exported from
+[`system-container.drawio`](docs/architecture/system-container.drawio); open that file in
+[draw.io](https://app.diagrams.net) to zoom, pan, or edit. Full written deep-dive:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Requirements
 
@@ -98,7 +98,7 @@ npm**, which enables `npm ci` → `npx jest` (unit/integration tests), the brows
 | **Browse the API** (offline) | [docs/api/index.html](docs/api/index.html) — open in a browser. Source: [docs/api/openapi.yaml](docs/api/openapi.yaml) |
 | **Browse the API** (live, interactive) | <http://localhost:4000/api-docs> — interactive Swagger served by the gateway (available after `scripts/setup.sh`) |
 | **Understand the architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| **See the whole system map** | embedded SVG in [Architecture](#architecture) above · interactive [system-container.html](docs/architecture/system-container.html) (zoom/pan + click-to-explore) |
+| **See the whole system map** | the [Architecture](#architecture) diagram above · editable source [system-container.drawio](docs/architecture/system-container.drawio) (open in draw.io) |
 | **See who can do what** (roles × permissions) | [docs/access-control-matrix.md](docs/access-control-matrix.md) |
 | **Understand one service** (architecture + request-flow flowcharts) | [docs/services/](docs/services/) — one deep-dive per service, each with internal flow/sequence diagrams · see [Per-service docs](#per-service-docs) |
 | **Find any doc** | [docs/README.md](docs/README.md) — the full documentation index |

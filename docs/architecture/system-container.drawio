@@ -1,0 +1,70 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="Aegis — Container diagram" id="aegis-container">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- person -->
+        <mxCell id="user" value="User / API client&#10;acts within a tenant · Bearer JWT" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=0;fillColor=#5b6776;strokeColor=#3d4753;fontColor=#ffffff;" vertex="1" parent="1"><mxGeometry x="780" y="40" width="60" height="90" as="geometry"/></mxCell>
+
+        <!-- system boundary -->
+        <mxCell id="bound" value="Aegis platform — Nx monorepo · one image per service (PROCESS_TYPE: api / worker / migration)" style="rounded=1;whiteSpace=wrap;html=0;dashed=1;dashPattern=6 6;fillColor=none;strokeColor=#9aa3b0;verticalAlign=top;fontColor=#5b6675;fontStyle=1;arcSize=4;" vertex="1" parent="1"><mxGeometry x="40" y="200" width="1560" height="700" as="geometry"/></mxCell>
+
+        <!-- gateway (hexagon) -->
+        <mxCell id="gw" value="API Gateway&#10;Node · Express · :4000&#10;validate JWT (JWKS) · route by path · correlation id" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=0;fillColor=#3b6fb5;strokeColor=#2f5d9c;fontColor=#ffffff;" vertex="1" parent="1"><mxGeometry x="640" y="240" width="340" height="80" as="geometry"/></mxCell>
+
+        <!-- services -->
+        <mxCell id="um" value="user-management&#10;:4001 · PAP/PIP&#10;identity · roles · permissions&#10;policies · issues JWT/JWKS" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="70" y="380" width="190" height="100" as="geometry"/></mxCell>
+        <mxCell id="exp" value="expense&#10;:4002&#10;reports · multi-level approval · ERP push" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="280" y="380" width="190" height="100" as="geometry"/></mxCell>
+        <mxCell id="inv" value="invoice&#10;:4007&#10;lifecycle · currency-aware dedupe · approval" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="490" y="380" width="190" height="100" as="geometry"/></mxCell>
+        <mxCell id="pay" value="payroll&#10;:4003 · highest-PII&#10;pay-runs · payslips · field encryption · maker-checker" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="700" y="380" width="190" height="100" as="geometry"/></mxCell>
+        <mxCell id="rep" value="reporting&#10;:4004 · CQRS-lite&#10;report defs · runs · async export" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="910" y="380" width="190" height="100" as="geometry"/></mxCell>
+        <mxCell id="wf" value="workflow&#10;:4005&#10;rules-as-data engine (api)" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="1120" y="380" width="190" height="100" as="geometry"/></mxCell>
+        <mxCell id="ntf" value="notification&#10;:4006&#10;in-app + email (api)" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#3b82c4;strokeColor=#3173b0;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1"><mxGeometry x="1330" y="380" width="190" height="100" as="geometry"/></mxCell>
+
+        <!-- access-control ribbon -->
+        <mxCell id="ac" value="@aegis/access-control — shared PDP every service's PEP calls: RBAC (Casbin, dom=tenant) + ABAC (amount caps) + row-level scope · PDP/PEP/PAP/PIP · fail-closed" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef2f7;strokeColor=#cdd8e3;fontColor=#2f6fb0;fontStyle=1;arcSize=6;" vertex="1" parent="1"><mxGeometry x="70" y="500" width="1450" height="40" as="geometry"/></mxCell>
+
+        <!-- workers -->
+        <mxCell id="cli" value="cli&#10;PROCESS_TYPE=migration&#10;migrations + seeders (one-shot)" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#8b5cc7;strokeColor=#7549b8;fontColor=#ffffff;arcSize=10;" vertex="1" parent="1"><mxGeometry x="70" y="570" width="200" height="70" as="geometry"/></mxCell>
+        <mxCell id="wfw" value="workflow-worker&#10;PROCESS_TYPE=worker&#10;consumes events → runs rules · ERP sync" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#8b5cc7;strokeColor=#7549b8;fontColor=#ffffff;arcSize=10;" vertex="1" parent="1"><mxGeometry x="1110" y="570" width="200" height="70" as="geometry"/></mxCell>
+        <mxCell id="ntfw" value="notification-worker&#10;PROCESS_TYPE=worker&#10;in-app + email on events" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#8b5cc7;strokeColor=#7549b8;fontColor=#ffffff;arcSize=10;" vertex="1" parent="1"><mxGeometry x="1320" y="570" width="200" height="70" as="geometry"/></mxCell>
+
+        <!-- data stores (cylinders) -->
+        <mxCell id="pg" value="PostgreSQL · :5432&#10;Row-Level Security (FORCE+RESTRICTIVE)&#10;aegis_app non-owner · SET LOCAL app.current_tenant&#10;tables · casbin · event_outbox · audit" style="shape=cylinder3;whiteSpace=wrap;html=0;boundedLbl=1;backgroundOutline=1;fillColor=#14a08a;strokeColor=#0f8a78;fontColor=#ffffff;" vertex="1" parent="1"><mxGeometry x="120" y="690" width="320" height="150" as="geometry"/></mxCell>
+        <mxCell id="rd" value="Redis · :6379&#10;cache + policy-reload&#10;pub/sub · PDP decision cache" style="shape=cylinder3;whiteSpace=wrap;html=0;boundedLbl=1;backgroundOutline=1;fillColor=#14a08a;strokeColor=#0f8a78;fontColor=#ffffff;" vertex="1" parent="1"><mxGeometry x="500" y="690" width="220" height="150" as="geometry"/></mxCell>
+        <mxCell id="kf" value="Apache Kafka · :9092&#10;message bus (KRaft single broker)&#10;14 domain-event topics + &lt;topic&gt;.dlq DLQ&#10;transactional outbox → relay → Kafka" style="shape=process;whiteSpace=wrap;html=0;fillColor=#d08326;strokeColor=#b06a1e;fontColor=#ffffff;size=14;" vertex="1" parent="1"><mxGeometry x="800" y="690" width="380" height="150" as="geometry"/></mxCell>
+
+        <!-- external (clouds) -->
+        <mxCell id="erp" value="ERP systems&#10;external · via @aegis/connectors" style="shape=cloud;whiteSpace=wrap;html=0;fillColor=#6b7280;strokeColor=#565d68;fontColor=#ffffff;" vertex="1" parent="1"><mxGeometry x="1240" y="690" width="180" height="100" as="geometry"/></mxCell>
+        <mxCell id="smtp" value="Email / SMTP&#10;external · outbound email" style="shape=cloud;whiteSpace=wrap;html=0;fillColor=#6b7280;strokeColor=#565d68;fontColor=#ffffff;" vertex="1" parent="1"><mxGeometry x="1240" y="810" width="180" height="90" as="geometry"/></mxCell>
+
+        <!-- edges -->
+        <mxCell id="e1" value="API calls · HTTPS, Bearer JWT + X-Tenant-Id" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="user" target="gw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="routes by path · /{service}/v1 · HTTPS" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="gw" target="exp"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2b" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="gw" target="um"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2c" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="gw" target="inv"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2d" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="gw" target="pay"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2e" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="gw" target="rep"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2f" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="gw" target="wf"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2g" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="gw" target="ntf"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="read/write · SQL · RLS" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="exp" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3b" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="pay" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3c" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="um" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="policy-reload · pub/sub" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="um" target="rd"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" value="publish events · outbox" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="exp" target="kf"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5b" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="inv" target="kf"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5c" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="pay" target="kf"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" value="delivers topics" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="kf" target="wfw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6b" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="kf" target="ntfw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" value="approval.command · notification.requested" style="endArrow=block;html=0;rounded=1;dashed=1;fontColor=#48515e;" edge="1" parent="1" source="wfw" target="kf"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" value="write side-effects · SQL · RLS" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="wfw" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8b" style="endArrow=block;html=0;rounded=1;" edge="1" parent="1" source="ntfw" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e9" value="ERP push · connectors" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="wfw" target="erp"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e10" value="email · SMTP" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="ntfw" target="smtp"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e11" value="migrations + seeders" style="endArrow=block;html=0;rounded=1;fontColor=#48515e;" edge="1" parent="1" source="cli" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
