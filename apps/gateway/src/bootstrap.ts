@@ -7,6 +7,7 @@ import {
   installSignalHandlers,
 } from '@aegis/service-core';
 import { proxyHandler } from './proxy';
+import { mountApiDocs } from './docs';
 
 /**
  * Composition root for the gateway (the donor index → bootstrap split). The gateway is plain Express
@@ -22,6 +23,10 @@ function init(): void {
   app.get('/health', (_req: Request, res: Response) =>
     res.json({ service: 'gateway', status: 'ok', uptime: process.uptime() }),
   );
+
+  // Public, interactive API reference (Swagger UI) at the edge. Mounted BEFORE the core middleware
+  // band so it never hits the PEP/auth wall — `/api-docs` + `/api-docs.json` stay open.
+  mountApiDocs(app);
 
   // The gateway mints the correlation id at the edge and validates required context headers.
   applyCoreMiddleware(app, { context: { excludePaths: ['/health'], mintCorrelationIdIfAbsent: true } });
