@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Aegis — Request &amp; Authorization Lifecycle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b22; --panel2:#1e2430; --border:#2b333f; --fg:#e8ebf0; --muted:#97a3b6;
+    --accent:#6ea8fe; --accent2:#2dd4bf; --dim:#39424f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);height:100%;
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 26px 14px;border-bottom:1px solid var(--border)}
+  header h1{margin:0 0 4px;font-size:18px}
+  header p{margin:0;color:var(--muted);font-size:13px}
+  .wrap{display:flex;flex-direction:column;height:calc(100vh - 0px)}
+  .toolbar{display:flex;align-items:center;gap:8px;padding:12px 26px}
+  .toolbar button{background:var(--panel2);color:var(--fg);border:1px solid var(--border);border-radius:8px;
+    padding:7px 14px;font-size:13px;cursor:pointer}
+  .toolbar button:hover{background:#252d3a}
+  .toolbar .step-of{color:var(--muted);font-size:13px;margin-left:6px}
+  .stagebar{flex:1;overflow:auto;padding:8px 26px 20px}
+  svg{display:block;min-width:1820px}
+  /* stage cards */
+  .stage{cursor:pointer}
+  .stage .box{fill:var(--panel);stroke:var(--border);stroke-width:1.5;transition:.18s}
+  .stage .num{fill:var(--panel2);stroke:var(--border);stroke-width:1.5}
+  .stage .numtext{fill:var(--muted);font-weight:700;font-size:14px}
+  .stage .title{fill:var(--fg);font-weight:700;font-size:15px}
+  .stage .sub{fill:var(--muted);font-size:12px}
+  .stage:hover .box{stroke:var(--accent)}
+  .stage.active .box{stroke:var(--accent);stroke-width:2.5;fill:#16243a}
+  .stage.active .num{fill:var(--accent);stroke:var(--accent)}
+  .stage.active .numtext{fill:#0f1216}
+  .stage.active .title{fill:#cfe0ff}
+  .stage.dim{opacity:.45}
+  /* connectors */
+  .link{stroke:var(--dim);stroke-width:2;fill:none;transition:.18s}
+  .link.lit{stroke:var(--accent)}
+  .linklabel{fill:var(--muted);font-size:11px}
+  .linklabel.lit{fill:var(--accent)}
+  /* detail panel */
+  .detail{border-top:1px solid var(--border);background:var(--panel);padding:16px 26px 22px;min-height:120px}
+  .detail .k{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:6px;
+    padding:1px 7px;font:600 11px ui-monospace,Menlo,monospace;color:#bcd3ff;margin:0 4px 4px 0}
+  .detail h3{margin:0 0 6px;font-size:15px;color:#cfe0ff}
+  .detail p{margin:0 0 8px;color:var(--fg);font-size:13.5px;max-width:1000px}
+  .detail .why{color:var(--muted);font-size:12.5px}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Request &amp; Authorization Lifecycle</h1>
+    <p>One request, end to end — from the client to the database and back. Click a stage (or use Prev / Next / Play) to see what happens and why.</p>
+  </header>
+
+  <div class="toolbar">
+    <button id="prev">‹ Prev</button>
+    <button id="next">Next ›</button>
+    <button id="play">▶ Play</button>
+    <button id="overview">Overview</button>
+    <span class="step-of" id="stepof"></span>
+  </div>
+
+  <div class="stagebar">
+    <svg id="svg" viewBox="0 0 1820 260" xmlns="http://www.w3.org/2000/svg">
+      <g id="links"></g>
+      <g id="stages"></g>
+    </svg>
+  </div>
+
+  <div class="detail" id="detail"></div>
+</div>
+
+<script>
+(function(){
+  // 7 stages of the lifecycle. Each: short card text + rich detail.
+  var S=[
+    {t:"Client", s:"browser · mobile · Postman",
+     d:"The caller sends an HTTPS request to the gateway carrying a short-lived <b>Bearer JWT</b> and an <b>X-Tenant-Id</b> header (the workspace it is acting in).",
+     why:"The tenant is never inferred — it is explicit and fail-closed.", keys:["Authorization: Bearer","X-Tenant-Id"], inlbl:""},
+    {t:"Gateway · :4000", s:"validate · route",
+     d:"The edge validates the JWT <b>signature (JWKS)</b> and <b>audience</b>, mints an <b>X-Correlation-Id</b> if absent, stamps <b>X-Caller=gateway</b>, and routes to the downstream service by the <b>first path segment</b> (<code>/expense/v1/…</code>). The body is proxied unchanged.",
+     why:"One place does coarse auth + routing; everything past here is internal.", keys:["JWKS","aud","X-Correlation-Id","route by path"], inlbl:"HTTPS request"},
+    {t:"Service PEP", s:"defense in depth",
+     d:"Each service <b>re-validates the JWT + audience itself</b> (it does not trust the edge), checks the token's tenant matches <b>X-Tenant-Id</b>, then the <b>authorize(permission)</b> middleware loads the target resource and calls the decision point.",
+     why:"A compromised or skipped gateway cannot grant access — the service is the real enforcement point.", keys:["re-validate JWT","tenant match","authorize(perm)"], inlbl:"proxied + context headers"},
+    {t:"PDP · decide()", s:"@aegis/access-control",
+     d:"The Policy Decision Point evaluates <b>RBAC</b> (Casbin role→permission, scoped by <code>dom=tenant</code>) + <b>ABAC</b> conditions (e.g. approval amount caps) + <b>row-level scope</b>, returning <code>{ allow, reason, obligations }</code>. It is pure, <b>fail-closed</b>, and cached.",
+     why:"Authorization logic lives in one shared, testable place — not sprinkled across services.", keys:["RBAC","ABAC","row-scope","fail-closed"], inlbl:"decide(principal, action, resource)"},
+    {t:"Tenant transaction", s:"set the tenant context",
+     d:"On <code>allow</code>, the service opens a transaction and runs <b>SET LOCAL app.current_tenant = &lt;tenant&gt;</b>, executing all queries as the <b>aegis_app</b> role — a NON-owner without <code>BYPASSRLS</code>.",
+     why:"The tenant boundary is pushed down into the database session, not left to ORM filters.", keys:["SET LOCAL app.current_tenant","role: aegis_app"], inlbl:"allow"},
+    {t:"PostgreSQL · RLS", s:"the data boundary",
+     d:"Row-Level Security policies (<b>FORCE + RESTRICTIVE</b>) filter every row by <code>tenant_id</code> against the session tenant. A query for another tenant's rows simply returns nothing.",
+     why:"Even a bug in app code (a forgotten WHERE clause) cannot leak cross-tenant data — the database refuses it.", keys:["FORCE","RESTRICTIVE","tenant_id"], inlbl:"SQL"},
+    {t:"Response", s:"obligations + audit",
+     d:"Any PDP <b>obligations</b> are applied (e.g. masking sensitive payroll columns unless the caller holds <code>payroll.sensitive.read</code>), the <b>X-Correlation-Id</b> is echoed, and a <b>hash-chained audit</b> entry records who did what, in which tenant, with which decision.",
+     why:"Every decision is observable and tamper-evident after the fact.", keys:["obligations / masking","X-Correlation-Id","hash-chained audit"], inlbl:"rows"}
+  ];
+
+  var CW=210, CH=110, GAP=20, X0=20, Y=70;
+  var svg=document.getElementById('svg'), gS=document.getElementById('stages'), gL=document.getElementById('links');
+  var NS="http://www.w3.org/2000/svg";
+  function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e;}
+  function txt(x,y,cls,str){var t=el('text',{x:x,y:y,class:cls});t.textContent=str;return t;}
+
+  // links (straight arrows between consecutive cards)
+  S.forEach(function(st,i){
+    if(i===0)return;
+    var x1=X0+(i-1)*(CW+GAP)+CW, x2=X0+i*(CW+GAP), my=Y+CH/2;
+    var p=el('path',{class:'link','data-i':i,d:'M'+x1+','+my+' L'+(x2-2)+','+my,'marker-end':'url(#ar)'});
+    gL.appendChild(p);
+    if(st.inlbl){ var lbl=txt((x1+x2)/2, my-10, 'linklabel', st.inlbl); lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('data-i',i); gL.appendChild(lbl); }
+  });
+  // arrow marker
+  var defs=el('defs',{}); var m=el('marker',{id:'ar',markerWidth:'8',markerHeight:'8',refX:'6',refY:'3',orient:'auto'});
+  m.appendChild(el('path',{d:'M0,0 L6,3 L0,6 Z',fill:'#39424f'})); defs.appendChild(m); svg.insertBefore(defs,gL);
+
+  // stage cards
+  S.forEach(function(st,i){
+    var x=X0+i*(CW+GAP);
+    var g=el('g',{class:'stage','data-i':i});
+    g.appendChild(el('rect',{class:'box',x:x,y:Y,width:CW,height:CH,rx:12}));
+    g.appendChild(el('circle',{class:'num',cx:x+22,cy:Y+24,r:14}));
+    var nt=txt(x+22,Y+29,'numtext',(i+1)); nt.setAttribute('text-anchor','middle'); g.appendChild(nt);
+    g.appendChild(txt(x+44,Y+30,'title',st.t));
+    g.appendChild(txt(x+16,Y+62,'sub',st.s));
+    // wrap a short hint
+    g.appendChild(txt(x+16,Y+84,'sub',(st.keys[0]||'')));
+    g.appendChild(txt(x+16,Y+100,'sub',(st.keys[1]||'')));
+    g.addEventListener('click',function(){select(i);});
+    gS.appendChild(g);
+  });
+
+  var cur=-1, timer=null;
+  function detailHTML(i){var s=S[i];
+    return '<h3>'+(i+1)+'. '+s.t+'</h3><p>'+s.d+'</p>'+
+      '<div>'+s.keys.map(function(k){return '<span class="k">'+k+'</span>';}).join('')+'</div>'+
+      '<p class="why">Why it matters: '+s.why+'</p>';}
+  function select(i){
+    cur=i;
+    document.querySelectorAll('.stage').forEach(function(g){var gi=+g.getAttribute('data-i');
+      g.classList.toggle('active',gi===i); g.classList.toggle('dim',i>=0 && gi!==i);});
+    document.querySelectorAll('.link').forEach(function(l){l.classList.toggle('lit',+l.getAttribute('data-i')===i || +l.getAttribute('data-i')===i+1);});
+    document.querySelectorAll('.linklabel').forEach(function(l){l.classList.toggle('lit',+l.getAttribute('data-i')===i);});
+    document.getElementById('detail').innerHTML=detailHTML(i);
+    document.getElementById('stepof').textContent='Step '+(i+1)+' of '+S.length;
+  }
+  function overview(){
+    cur=-1; document.querySelectorAll('.stage').forEach(function(g){g.classList.remove('active','dim');});
+    document.querySelectorAll('.link,.linklabel').forEach(function(l){l.classList.remove('lit');});
+    document.getElementById('stepof').textContent='';
+    document.getElementById('detail').innerHTML='<h3>The whole path</h3><p>A request crosses seven stages: '+
+      S.map(function(s,n){return '<b>'+(n+1)+'</b> '+s.t;}).join(' → ')+
+      '. Coarse auth + routing happen once at the gateway; real enforcement, the tenant boundary, and the audit trail happen per service. Click any stage to dig in.</p>';
+  }
+  document.getElementById('next').onclick=function(){select(Math.min(S.length-1,cur+1<1?0:cur+1));};
+  document.getElementById('prev').onclick=function(){select(Math.max(0,(cur<0?0:cur-1)));};
+  document.getElementById('overview').onclick=function(){clearInterval(timer);overview();};
+  document.getElementById('play').onclick=function(){clearInterval(timer);var i=0;select(0);
+    timer=setInterval(function(){i++;if(i>=S.length){clearInterval(timer);return;}select(i);},1400);};
+  overview();
+})();
+</script>

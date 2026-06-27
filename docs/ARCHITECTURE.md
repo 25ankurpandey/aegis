@@ -31,10 +31,11 @@ unreadable. Below it is split into **five focused views**, each independently le
 north-south edge, the data plane, async eventing, the Casbin policy-reload bus, and the
 `PROCESS_TYPE` pod roles. Read them in order for the full picture.
 
-> **Prefer one big picture?** Open the interactive, **zoom + pan** system map —
-> [`system-map.html`](architecture/system-map.html) — which shows every service, worker, and infra
-> component on one canvas, with the request / data-RLS / event / policy-reload / service-to-service
-> flows colour-coded and individually toggleable. Open it in a browser (drag to pan, scroll to zoom).
+> **Prefer one big picture?** See the [container diagram](architecture/system-overview.svg) (C4 Level 2)
+> — every service, worker, and infra component on one page with proper shapes + a legend. For the
+> **interactive** version (pan / zoom · click a container to see only its connections) open
+> [`system-container.html`](architecture/system-container.html), and walk a request through the system
+> in [`flow-request-lifecycle.html`](architecture/flow-request-lifecycle.html).
 
 ### (a) Edge — north-south request path
 
