@@ -85,6 +85,7 @@ npm**, which enables `npm ci` → `npx jest` (unit/integration tests), the brows
 | **Browse the API** (offline) | [docs/api/index.html](docs/api/index.html) — open in a browser. Source: [docs/api/openapi.yaml](docs/api/openapi.yaml) |
 | **Browse the API** (live, interactive) | <http://localhost:4000/api-docs> — interactive Swagger served by the gateway (available after `scripts/setup.sh`) |
 | **Understand the architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| **See the whole system map** (interactive · zoom + pan) | [docs/architecture/system-map.html](docs/architecture/system-map.html) — every service, worker, and infra component with request / data-RLS / event / policy-reload / s2s flows; open in a browser |
 | **See who can do what** (roles × permissions) | [docs/access-control-matrix.md](docs/access-control-matrix.md) |
 | **Understand one service** (architecture + request-flow flowcharts) | [docs/services/](docs/services/) — one deep-dive per service, each with internal flow/sequence diagrams · see [Per-service docs](#per-service-docs) |
 | **Find any doc** | [docs/README.md](docs/README.md) — the full documentation index |

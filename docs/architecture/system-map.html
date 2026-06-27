@@ -1,0 +1,325 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Aegis — Full System Architecture Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0e1014; --panel:#161a22; --panel2:#1c222d; --border:#2a323f; --fg:#e6e9ef; --muted:#94a1b5;
+    --request:#6ea8fe; --data:#2dd4bf; --event:#e0a13a; --policy:#b07cf6; --s2s:#56c66a;
+    --edge:#0b0d11; --svc:#1b2230; --svcline:#3a4252;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  header{position:fixed;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:14px;
+    padding:0 16px;background:rgba(14,16,20,.92);border-bottom:1px solid var(--border);z-index:30;backdrop-filter:blur(6px)}
+  header h1{margin:0;font-size:15px;font-weight:700;letter-spacing:.2px}
+  header .hint{color:var(--muted);font-size:12px}
+  .controls{margin-left:auto;display:flex;gap:6px}
+  .controls button{background:var(--panel2);color:var(--fg);border:1px solid var(--border);border-radius:7px;
+    padding:6px 10px;font-size:12px;cursor:pointer}
+  .controls button:hover{background:#222b38}
+  #stage{position:fixed;inset:52px 0 0 0;cursor:grab}
+  #stage.grabbing{cursor:grabbing}
+  svg{width:100%;height:100%;display:block;touch-action:none}
+
+  /* legend / flow filters */
+  .legend{position:fixed;left:14px;bottom:14px;background:rgba(22,26,34,.95);border:1px solid var(--border);
+    border-radius:10px;padding:10px 12px;z-index:30;max-width:260px}
+  .legend h2{margin:0 0 7px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .legend .row{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:12px}
+  .legend .row:hover{background:#222b38}
+  .legend .row.active{background:#222b38;outline:1px solid var(--border)}
+  .legend .sw{width:22px;height:0;border-top:3px solid;border-radius:2px;flex:0 0 22px}
+  .legend .sw.dash{border-top-style:dashed}
+  .legend .note{color:var(--muted);font-size:11px;margin-top:6px;line-height:1.35}
+
+  /* nodes */
+  .node rect{stroke:var(--border);stroke-width:1.5}
+  .node .title{font-weight:700;font-size:15px;fill:var(--fg)}
+  .node .sub{font-size:11.5px;fill:var(--muted)}
+  .node .tag{font-size:10.5px;fill:var(--muted);font-weight:600;letter-spacing:.04em}
+  .z-client rect{fill:#1a2030}
+  .z-edge   rect{fill:#19283f}
+  .z-svc    rect{fill:#1b2230}
+  .z-worker rect{fill:#241f2e}
+  .z-ac     rect{fill:#102a26}
+  .z-lib    rect{fill:#20242e}
+  .z-data   rect{fill:#102032}
+  .z-event  rect{fill:#2a2113}
+  .bandlabel{fill:#5b6675;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+
+  /* edges */
+  .edge{fill:none;stroke-width:2;opacity:.9}
+  .edge.flow-request{stroke:var(--request)}
+  .edge.flow-data{stroke:var(--data)}
+  .edge.flow-event{stroke:var(--event)}
+  .edge.flow-policy{stroke:var(--policy)}
+  .edge.flow-s2s{stroke:var(--s2s);stroke-dasharray:7 5}
+  .elabel{font-size:11px;font-weight:600}
+  .elabel.flow-request{fill:var(--request)} .elabel.flow-data{fill:var(--data)}
+  .elabel.flow-event{fill:var(--event)} .elabel.flow-policy{fill:var(--policy)} .elabel.flow-s2s{fill:var(--s2s)}
+  /* dimming when a flow filter is active */
+  svg.filtered .edge,svg.filtered .elabel{opacity:.06}
+  svg.f-request .flow-request,svg.f-data .flow-data,svg.f-event .flow-event,
+  svg.f-policy .flow-policy,svg.f-s2s .flow-s2s{opacity:.95!important}
+</style>
+
+<header>
+  <h1>Aegis — Full System Architecture</h1>
+  <span class="hint">drag to pan · scroll to zoom · click a flow in the legend to isolate it</span>
+  <div class="controls">
+    <button id="zin">＋</button><button id="zout">－</button>
+    <button id="fit">Fit</button><button id="reset">Reset</button>
+  </div>
+</header>
+
+<div id="stage">
+<svg id="map" viewBox="0 0 2240 1580" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a-request" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6ea8fe"/></marker>
+    <marker id="a-data" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker>
+    <marker id="a-event" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#e0a13a"/></marker>
+    <marker id="a-policy" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#b07cf6"/></marker>
+    <marker id="a-s2s" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#56c66a"/></marker>
+  </defs>
+
+  <g id="viewport">
+
+    <!-- ===== band labels ===== -->
+    <text class="bandlabel" x="24" y="120">Clients</text>
+    <text class="bandlabel" x="24" y="250">Edge</text>
+    <text class="bandlabel" x="24" y="430">API services · each re-validates auth at its own PEP</text>
+    <text class="bandlabel" x="24" y="640">Background workers (PROCESS_TYPE=worker) · one-shot CLI</text>
+    <text class="bandlabel" x="24" y="820">Shared access-control substrate (@aegis/*)</text>
+    <text class="bandlabel" x="24" y="1020">Data plane</text>
+    <text class="bandlabel" x="24" y="1300">Event plane (cross-process domain events)</text>
+
+    <!-- ===== EDGES (drawn first so nodes sit on top) ===== -->
+    <!-- request: client -> gateway -->
+    <path class="edge flow-request" d="M1120,132 L1120,178" marker-end="url(#a-request)"/>
+    <!-- request: gateway -> each service -->
+    <path class="edge flow-request" d="M980,300 C700,330 360,330 230,366" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1040,300 C950,330 560,332 520,366" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1100,300 C1010,332 840,338 812,366" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1140,300 L1140,366" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1180,300 C1260,332 1430,338 1452,366" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1240,300 C1430,330 1700,332 1742,366" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1300,300 C1560,328 1980,330 2032,366" marker-end="url(#a-request)"/>
+    <text class="elabel flow-request" x="1310" y="338">routes by 1st path segment → /{service}/v1/…</text>
+    <!-- request: services' PEP -> access-control PDP -->
+    <path class="edge flow-request" d="M812,510 C812,640 740,690 740,742" marker-end="url(#a-request)"/>
+    <path class="edge flow-request" d="M1452,510 C1452,650 980,700 980,742" marker-end="url(#a-request)"/>
+    <text class="elabel flow-request" x="470" y="700">every PEP → PDP.decide(principal, action, resource) → allow/deny + obligations</text>
+
+    <!-- data: services -> postgres (RLS) -->
+    <path class="edge flow-data" d="M230,510 C230,820 360,900 380,962" marker-end="url(#a-data)"/>
+    <path class="edge flow-data" d="M1142,510 C1142,860 560,910 560,962" marker-end="url(#a-data)"/>
+    <text class="elabel flow-data" x="120" y="905">queries run as aegis_app + SET LOCAL app.current_tenant — RLS enforces tenant isolation</text>
+    <!-- data: PDP -> postgres (grants/casbin) + redis (decision cache) -->
+    <path class="edge flow-data" d="M700,872 C650,910 600,930 560,962" marker-end="url(#a-data)"/>
+    <path class="edge flow-data" d="M980,872 C1000,910 1010,930 1010,962" marker-end="url(#a-data)"/>
+
+    <!-- policy reload: user-management(PAP) -> redis -> all services -->
+    <path class="edge flow-policy" d="M150,510 C120,800 980,910 1010,962" marker-end="url(#a-policy)"/>
+    <path class="edge flow-policy" d="M1130,962 C1300,840 900,560 360,452" marker-end="url(#a-policy)"/>
+    <text class="elabel flow-policy" x="1120" y="800">PAP changes grant → Redis pub/sub → every enforcer reloads Casbin</text>
+
+    <!-- event publish: postgres outbox -> relay -> kafka -->
+    <path class="edge flow-event" d="M740,1140 C740,1160 1240,1175 1300,1212" marker-end="url(#a-event)"/>
+    <text class="elabel flow-event" x="760" y="1168">outbox row written in the SAME tx → in-process relay (SKIP LOCKED) drains → Kafka</text>
+    <!-- event consume: kafka -> workers -->
+    <path class="edge flow-event" d="M1560,1212 C1560,900 1640,760 1680,684" marker-end="url(#a-event)"/>
+    <path class="edge flow-event" d="M1820,1212 C1980,900 2000,760 2010,684" marker-end="url(#a-event)"/>
+    <!-- event: workflow-worker produces back to kafka -->
+    <path class="edge flow-event" d="M1610,684 C1500,860 1430,1080 1440,1212" marker-end="url(#a-event)"/>
+    <text class="elabel flow-event" x="1330" y="980">workers consume topics; workflow-worker produces approval.command / notification.requested</text>
+    <!-- event: workers write side-effects to postgres -->
+    <path class="edge flow-event" d="M1680,620 C1300,760 760,900 700,962" marker-end="url(#a-event)"/>
+
+    <!-- s2s: services -> user-management (JWKS) ; notification-worker -> recipient dir -->
+    <path class="edge flow-s2s" d="M382,392 L360,392" marker-end="url(#a-s2s)"/>
+    <path class="edge flow-s2s" d="M1842,470 C900,560 360,470 362,432" marker-end="url(#a-s2s)"/>
+    <path class="edge flow-s2s" d="M2010,560 C1200,560 360,500 362,448" marker-end="url(#a-s2s)"/>
+    <text class="elabel flow-s2s" x="900" y="548">signed internal JWT + X-Internal-Origin: token validation (JWKS) + recipient directory</text>
+
+    <!-- ===== NODES ===== -->
+    <!-- clients -->
+    <g class="node z-client"><rect x="940" y="40" width="360" height="86" rx="12"/>
+      <text class="title" x="1120" y="74" text-anchor="middle">Clients</text>
+      <text class="sub" x="1120" y="98" text-anchor="middle">browser · mobile · Postman · curl</text>
+      <text class="sub" x="1120" y="116" text-anchor="middle">Bearer JWT + X-Tenant-Id headers</text></g>
+
+    <!-- gateway -->
+    <g class="node z-edge"><rect x="820" y="178" width="600" height="122" rx="12"/>
+      <text class="title" x="1120" y="214" text-anchor="middle">API Gateway · :4000</text>
+      <text class="sub" x="1120" y="240" text-anchor="middle">validate JWT (JWKS) · mint X-Correlation-Id · route by path · rate-limit</text>
+      <text class="sub" x="1120" y="262" text-anchor="middle">public: /auth/register · /auth/login · /health · /api-docs (live Swagger)</text>
+      <text class="tag" x="1120" y="286" text-anchor="middle">north–south entry · proxies request unchanged + X-Caller=gateway</text></g>
+
+    <!-- services -->
+    <g class="node z-svc"><rect x="90" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="225" y="398" text-anchor="middle">user-management</text>
+      <text class="tag" x="225" y="418" text-anchor="middle">:4001 · PAP / PIP</text>
+      <text class="sub" x="225" y="442" text-anchor="middle">tenants · users · roles</text>
+      <text class="sub" x="225" y="460" text-anchor="middle">permissions · policies</text>
+      <text class="sub" x="225" y="478" text-anchor="middle">invites · sessions</text>
+      <text class="sub" x="225" y="496" text-anchor="middle">issues JWT · serves JWKS</text></g>
+    <g class="node z-svc"><rect x="382" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="517" y="398" text-anchor="middle">expense</text>
+      <text class="tag" x="517" y="418" text-anchor="middle">:4002</text>
+      <text class="sub" x="517" y="442" text-anchor="middle">reports + line items</text>
+      <text class="sub" x="517" y="460" text-anchor="middle">multi-level approval</text>
+      <text class="sub" x="517" y="478" text-anchor="middle">reimburse · ERP push</text></g>
+    <g class="node z-svc"><rect x="674" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="809" y="398" text-anchor="middle">invoice</text>
+      <text class="tag" x="809" y="418" text-anchor="middle">:4007</text>
+      <text class="sub" x="809" y="442" text-anchor="middle">lifecycle / matching</text>
+      <text class="sub" x="809" y="460" text-anchor="middle">currency-aware dedupe</text>
+      <text class="sub" x="809" y="478" text-anchor="middle">approval</text></g>
+    <g class="node z-svc"><rect x="966" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="1101" y="398" text-anchor="middle">payroll</text>
+      <text class="tag" x="1101" y="418" text-anchor="middle">:4003 · highest-PII</text>
+      <text class="sub" x="1101" y="442" text-anchor="middle">pay-runs · payslips</text>
+      <text class="sub" x="1101" y="460" text-anchor="middle">field encryption</text>
+      <text class="sub" x="1101" y="478" text-anchor="middle">maker-checker · disburse</text></g>
+    <g class="node z-svc"><rect x="1258" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="1393" y="398" text-anchor="middle">reporting</text>
+      <text class="tag" x="1393" y="418" text-anchor="middle">:4004 · CQRS-lite</text>
+      <text class="sub" x="1393" y="442" text-anchor="middle">report definitions</text>
+      <text class="sub" x="1393" y="460" text-anchor="middle">runs · async export</text>
+      <text class="sub" x="1393" y="478" text-anchor="middle">schedules</text></g>
+    <g class="node z-svc"><rect x="1550" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="1685" y="398" text-anchor="middle">workflow</text>
+      <text class="tag" x="1685" y="418" text-anchor="middle">:4005 · rules CRUD</text>
+      <text class="sub" x="1685" y="442" text-anchor="middle">rules-as-data engine</text>
+      <text class="sub" x="1685" y="460" text-anchor="middle">conditions + actions</text>
+      <text class="sub" x="1685" y="478" text-anchor="middle">(api role)</text></g>
+    <g class="node z-svc"><rect x="1842" y="366" width="270" height="144" rx="11"/>
+      <text class="title" x="1977" y="398" text-anchor="middle">notification</text>
+      <text class="tag" x="1977" y="418" text-anchor="middle">:4006</text>
+      <text class="sub" x="1977" y="442" text-anchor="middle">in-app + email</text>
+      <text class="sub" x="1977" y="460" text-anchor="middle">text + HTML templates</text>
+      <text class="sub" x="1977" y="478" text-anchor="middle">idempotent (api role)</text></g>
+
+    <!-- workers + cli -->
+    <g class="node z-worker"><rect x="90" y="560" width="270" height="120" rx="11"/>
+      <text class="title" x="225" y="594" text-anchor="middle">cli</text>
+      <text class="tag" x="225" y="614" text-anchor="middle">PROCESS_TYPE=migration</text>
+      <text class="sub" x="225" y="640" text-anchor="middle">migrations + seeders</text>
+      <text class="sub" x="225" y="658" text-anchor="middle">one-shot job, then exits</text></g>
+    <g class="node z-worker"><rect x="1550" y="560" width="270" height="120" rx="11"/>
+      <text class="title" x="1685" y="592" text-anchor="middle">workflow-worker</text>
+      <text class="tag" x="1685" y="612" text-anchor="middle">PROCESS_TYPE=worker</text>
+      <text class="sub" x="1685" y="636" text-anchor="middle">consumes events → runs rules</text>
+      <text class="sub" x="1685" y="654" text-anchor="middle">+ ERP-sync (connector.push)</text></g>
+    <g class="node z-worker"><rect x="1842" y="560" width="270" height="120" rx="11"/>
+      <text class="title" x="1977" y="592" text-anchor="middle">notification-worker</text>
+      <text class="tag" x="1977" y="612" text-anchor="middle">PROCESS_TYPE=worker</text>
+      <text class="sub" x="1977" y="636" text-anchor="middle">event-only write path:</text>
+      <text class="sub" x="1977" y="654" text-anchor="middle">in-app + email on domain events</text></g>
+
+    <!-- access-control substrate + libs -->
+    <g class="node z-ac"><rect x="90" y="742" width="1380" height="120" rx="12"/>
+      <text class="title" x="780" y="778" text-anchor="middle">@aegis/access-control — Policy Decision Point (PDP)</text>
+      <text class="sub" x="780" y="804" text-anchor="middle">RBAC (Casbin, role→permission, dom=tenant) + ABAC (amount caps, conditions) + row-level scope · PDP / PEP / PAP / PIP</text>
+      <text class="sub" x="780" y="826" text-anchor="middle">decide() is pure · fail-closed · decision cache · runtime grant reload via Redis pub/sub</text>
+      <text class="tag" x="780" y="850" text-anchor="middle">linked into every service — each service's PEP middleware calls decide() before the handler runs</text></g>
+    <g class="node z-lib"><rect x="1550" y="742" width="560" height="120" rx="12"/>
+      <text class="title" x="1830" y="776" text-anchor="middle">@aegis shared libraries</text>
+      <text class="sub" x="1830" y="802" text-anchor="middle">events (outbox · relay · DLQ) · approvals (multi-level engine)</text>
+      <text class="sub" x="1830" y="822" text-anchor="middle">audit (hash-chain) · activity · connectors · db · service-core</text>
+      <text class="tag" x="1830" y="846" text-anchor="middle">one access-control core shared by all services (Nx monorepo)</text></g>
+
+    <!-- data plane -->
+    <g class="node z-data"><rect x="90" y="962" width="620" height="190" rx="12"/>
+      <text class="title" x="400" y="998" text-anchor="middle">PostgreSQL · :5432</text>
+      <text class="sub" x="400" y="1026" text-anchor="middle">Row-Level Security: FORCE + RESTRICTIVE</text>
+      <text class="sub" x="400" y="1046" text-anchor="middle">app role aegis_app = NON-owner, no BYPASSRLS</text>
+      <text class="sub" x="400" y="1066" text-anchor="middle">SET LOCAL app.current_tenant per transaction</text>
+      <text class="tag" x="400" y="1092" text-anchor="middle">domain tables · casbin · event_outbox · audit (hash-chained)</text>
+      <text class="tag" x="400" y="1116" text-anchor="middle">a tenant session physically cannot read another tenant's rows</text></g>
+    <g class="node z-data"><rect x="770" y="962" width="420" height="190" rx="12"/>
+      <text class="title" x="980" y="998" text-anchor="middle">Redis · :6379</text>
+      <text class="sub" x="980" y="1028" text-anchor="middle">cache (cache-only datastore)</text>
+      <text class="sub" x="980" y="1050" text-anchor="middle">policy-reload pub/sub fan-out</text>
+      <text class="sub" x="980" y="1072" text-anchor="middle">PDP decision cache</text>
+      <text class="tag" x="980" y="1100" text-anchor="middle">cross-pod enforcer reload signal</text></g>
+    <!-- outbox/relay bridge -->
+    <g class="node z-event"><rect x="1260" y="962" width="400" height="110" rx="12"/>
+      <text class="title" x="1460" y="996" text-anchor="middle">Transactional outbox + relay</text>
+      <text class="sub" x="1460" y="1022" text-anchor="middle">event written in the same DB tx as state</text>
+      <text class="sub" x="1460" y="1042" text-anchor="middle">relay drains (FOR UPDATE SKIP LOCKED) → Kafka</text></g>
+
+    <!-- event plane -->
+    <g class="node z-event"><rect x="90" y="1212" width="1570" height="250" rx="12"/>
+      <text class="title" x="875" y="1250" text-anchor="middle">Apache Kafka · :9092 (KRaft single broker) — domain-event transport</text>
+      <text class="sub" x="875" y="1280" text-anchor="middle">topics: expense.submitted/approved/rejected · invoice.received/approved · approval.requested/command/completed</text>
+      <text class="sub" x="875" y="1302" text-anchor="middle">payroll.run.approved · payroll.payment.settled · record.created/updated · notification.requested · connector.push.requested</text>
+      <text class="tag" x="875" y="1330" text-anchor="middle">at-least-once · retry w/ exponential backoff · dead-letter topic &lt;topic&gt;.dlq on exhaustion (never silently dropped)</text>
+      <text class="tag" x="875" y="1356" text-anchor="middle">producer on every api pod (publishes via outbox) · consumers = the workflow + notification workers</text>
+      <text class="sub" x="875" y="1396" text-anchor="middle">consumed-by-workflow: expense.submitted · invoice.received · approval.completed · approval.command · connector.push.requested</text>
+      <text class="sub" x="875" y="1418" text-anchor="middle">consumed-by-notification: expense.approved/rejected · invoice.approved · approval.requested · payroll.run.approved · notification.requested</text></g>
+
+  </g>
+</svg>
+</div>
+
+<div class="legend">
+  <h2>Flows — click to isolate</h2>
+  <div class="row" data-flow="request"><span class="sw" style="border-color:var(--request)"></span>Request / authz path</div>
+  <div class="row" data-flow="data"><span class="sw" style="border-color:var(--data)"></span>Data access (RLS)</div>
+  <div class="row" data-flow="event"><span class="sw" style="border-color:var(--event)"></span>Domain events (outbox→Kafka)</div>
+  <div class="row" data-flow="policy"><span class="sw" style="border-color:var(--policy)"></span>Policy reload</div>
+  <div class="row" data-flow="s2s"><span class="sw dash" style="border-color:var(--s2s)"></span>Service-to-service (signed JWT)</div>
+  <div class="note">Click again to clear. Drag empty space to pan, scroll to zoom.</div>
+</div>
+
+<script>
+(function(){
+  var svg=document.getElementById('map'), vp=document.getElementById('viewport'), stage=document.getElementById('stage');
+  var scale=1, tx=0, ty=0, MIN=0.25, MAX=3;
+  function apply(){ vp.setAttribute('transform','translate('+tx+','+ty+') scale('+scale+')'); }
+  function fit(){ var r=stage.getBoundingClientRect(); var W=2240,H=1580;
+    scale=Math.min(r.width/W, r.height/H)*0.96; scale=Math.max(MIN,Math.min(MAX,scale));
+    tx=(r.width-W*scale)/2; ty=(r.height-H*scale)/2; apply(); }
+  function reset(){ scale=1; tx=0; ty=0; apply(); }
+  // pan
+  var down=false, sx=0, sy=0;
+  stage.addEventListener('mousedown',function(e){ down=true; sx=e.clientX-tx; sy=e.clientY-ty; stage.classList.add('grabbing'); });
+  window.addEventListener('mousemove',function(e){ if(!down)return; tx=e.clientX-sx; ty=e.clientY-sy; apply(); });
+  window.addEventListener('mouseup',function(){ down=false; stage.classList.remove('grabbing'); });
+  // zoom at cursor
+  stage.addEventListener('wheel',function(e){ e.preventDefault();
+    var r=stage.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+    var f=Math.exp(-e.deltaY*0.0015), ns=Math.max(MIN,Math.min(MAX,scale*f));
+    var k=ns/scale; tx=mx-(mx-tx)*k; ty=my-(my-ty)*k; scale=ns; apply(); }, {passive:false});
+  // touch pan/pinch
+  var pts={}, lastDist=0, lastMid=null;
+  stage.addEventListener('touchstart',function(e){ for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];pts[t.identifier]={x:t.clientX,y:t.clientY};} },{passive:false});
+  stage.addEventListener('touchmove',function(e){ e.preventDefault(); var ids=Object.keys(pts);
+    for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i]; if(pts[t.identifier]) pts[t.identifier]={x:t.clientX,y:t.clientY};}
+    ids=Object.keys(pts);
+    if(ids.length===1){ var p=pts[ids[0]]; if(lastMid){ tx+=p.x-lastMid.x; ty+=p.y-lastMid.y; apply(); } lastMid={x:p.x,y:p.y}; }
+    else if(ids.length>=2){ var a=pts[ids[0]],b=pts[ids[1]]; var d=Math.hypot(a.x-b.x,a.y-b.y); var mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      if(lastDist){ var r=stage.getBoundingClientRect(); var mx=mid.x-r.left,my=mid.y-r.top; var f=d/lastDist; var ns=Math.max(MIN,Math.min(MAX,scale*f)); var k=ns/scale; tx=mx-(mx-tx)*k; ty=my-(my-ty)*k; scale=ns; apply(); }
+      lastDist=d; lastMid=null; } },{passive:false});
+  function clearTouch(e){ for(var i=0;i<e.changedTouches.length;i++) delete pts[e.changedTouches[i].identifier]; if(Object.keys(pts).length<2)lastDist=0; if(!Object.keys(pts).length)lastMid=null; }
+  stage.addEventListener('touchend',clearTouch); stage.addEventListener('touchcancel',clearTouch);
+  // buttons
+  document.getElementById('zin').onclick=function(){ scale=Math.min(MAX,scale*1.2); apply(); };
+  document.getElementById('zout').onclick=function(){ scale=Math.max(MIN,scale/1.2); apply(); };
+  document.getElementById('fit').onclick=fit;
+  document.getElementById('reset').onclick=reset;
+  // flow filters
+  var active=null;
+  document.querySelectorAll('.legend .row').forEach(function(row){
+    row.onclick=function(){ var f=row.getAttribute('data-flow');
+      document.querySelectorAll('.legend .row').forEach(function(r){r.classList.remove('active');});
+      ['f-request','f-data','f-event','f-policy','f-s2s'].forEach(function(c){svg.classList.remove(c);});
+      if(active===f){ active=null; svg.classList.remove('filtered'); }
+      else{ active=f; svg.classList.add('filtered','f-'+f); row.classList.add('active'); } };
+  });
+  fit();
+})();
+</script>

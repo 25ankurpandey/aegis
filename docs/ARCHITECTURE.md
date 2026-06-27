@@ -31,6 +31,11 @@ unreadable. Below it is split into **five focused views**, each independently le
 north-south edge, the data plane, async eventing, the Casbin policy-reload bus, and the
 `PROCESS_TYPE` pod roles. Read them in order for the full picture.
 
+> **Prefer one big picture?** Open the interactive, **zoom + pan** system map —
+> [`system-map.html`](architecture/system-map.html) — which shows every service, worker, and infra
+> component on one canvas, with the request / data-RLS / event / policy-reload / service-to-service
+> flows colour-coded and individually toggleable. Open it in a browser (drag to pan, scroll to zoom).
+
 ### (a) Edge — north-south request path
 
 *Client always enters through the gateway, which proxies (but does not authorize) to the owning API service.*
