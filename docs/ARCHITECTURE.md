@@ -39,24 +39,7 @@ north-south edge, the data plane, async eventing, the Casbin policy-reload bus, 
 
 *Client always enters through the gateway, which proxies (but does not authorize) to the owning API service.*
 
-```mermaid
-flowchart TB
-  client([Client / CLI])
-  gw["gateway :4000<br/>mint X-Correlation-Id<br/>validate ctx headers<br/>reverse proxy (no authz)"]
-
-  subgraph api["API pods — PROCESS_TYPE=api"]
-    um["user-management :4001<br/>IdP + PAP"]
-    exp["expense :4002"]
-    pay["payroll :4003"]
-    rep["reporting :4004"]
-    wf["workflow :4005"]
-    notif["notification :4006"]
-    inv["invoice :4007"]
-  end
-
-  client -->|"HTTPS /&lt;svc&gt;/..."| gw
-  gw -->|"forward + ctx headers + Bearer"| api
-```
+![Edge — north-south request path: client enters through the gateway, which proxies (without authorizing) to the owning API service](diagrams/arch-edge.svg)
 
 ### (b) Data plane — every service talks to one Postgres (RLS) + Redis
 
