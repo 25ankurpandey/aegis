@@ -1,0 +1,21 @@
+{
+  "name": "access-control",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/access-control/src",
+  "projectType": "library",
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "libs/access-control/jest.config.ts"
+      }
+    }
+  },
+  "tags": [
+    "scope:shared",
+    "type:access"
+  ]
+}

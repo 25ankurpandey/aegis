@@ -1,0 +1,21 @@
+{
+  "name": "shared-enums",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/enums/src",
+  "projectType": "library",
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "libs/shared/enums/jest.config.ts"
+      }
+    }
+  },
+  "tags": [
+    "scope:shared",
+    "type:enums"
+  ]
+}

@@ -1,0 +1,579 @@
+{
+  "info": {
+    "_postman_id": "a1e91f00-aeg1-4a00-b000-aeg1scollection",
+    "name": "Aegis — full platform (gateway)",
+    "description": "Every Aegis flow through the gateway on http://localhost:4000.\n\nSetup:\n1. `bash scripts/setup.sh` (brings the stack up + seeds the demo tenant).\n2. Import this collection. The `baseUrl`, `tenantA`, `tenantB`, `token`, and id vars are collection variables (Variables tab) — no environment needed.\n3. Run **User Management → Login (saves JWT)** once; its test script saves the JWT into `{{token}}`, used as a Bearer token by every other request via collection auth.\n4. Run the rest top-to-bottom (a few requests save ids — reportId, invoiceId, payRunId, definitionId, runId — into collection vars for the follow-up requests).\n\nEvery request carries `x-tenant-id` (required, fail-closed), `x-correlation-id` (echoed back for tracing), and (where authenticated) the Bearer token. Lists return `{ data, meta }`; single resources return `{ data }`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000", "type": "string" },
+    { "key": "tenantA", "value": "00000000-0000-4000-8000-000000000001", "type": "string" },
+    { "key": "tenantB", "value": "00000000-0000-4000-8000-000000000002", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "reportId", "value": "", "type": "string" },
+    { "key": "invoiceId", "value": "", "type": "string" },
+    { "key": "payRunId", "value": "", "type": "string" },
+    { "key": "definitionId", "value": "", "type": "string" },
+    { "key": "runId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Gateway health (no auth)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "`/health` bypasses all middleware — no tenant, no token. Expect {\"service\":\"gateway\",\"status\":\"ok\",...}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Register (tenant A)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-register" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"e2e-user@demo-org.test\",\n  \"password\": \"e2e-password-123\",\n  \"firstName\": \"E2E\",\n  \"lastName\": \"User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-management/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["user-management", "v1", "auth", "register"]
+            },
+            "description": "Public. Tenant comes from the X-Tenant-Id header, never the body. Expect 201 { id, email }."
+          }
+        },
+        {
+          "name": "Login (saves JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('token present', () => pm.expect(res.token, 'token').to.be.a('string').and.not.empty);",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('token', res.token);",
+                  "  console.log('Saved JWT to {{token}} (' + res.token.slice(0, 24) + '...)');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-login" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@demo-org.test\",\n  \"password\": \"demo-admin-pw\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-management/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["user-management", "v1", "auth", "login"]
+            },
+            "description": "Public. The seeded admin holds every permission. The test script saves res.token into {{token}}, which every subsequent request sends as a Bearer token (collection auth). Run this first."
+          }
+        },
+        {
+          "name": "Me (current principal)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-me" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user-management/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["user-management", "v1", "auth", "me"]
+            },
+            "description": "Authenticated. Expect 200 { id, email, roles, permissions, scope }."
+          }
+        },
+        {
+          "name": "Tenant config — list",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-tenant-config-list" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user-management/v1/tenant/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["user-management", "v1", "tenant", "config"]
+            },
+            "description": "Gated by tenant.view."
+          }
+        },
+        {
+          "name": "Tenant config — set key",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-tenant-config-set" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": \"USD\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/user-management/v1/tenant/config/default_currency",
+              "host": ["{{baseUrl}}"],
+              "path": ["user-management", "v1", "tenant", "config", "default_currency"]
+            },
+            "description": "Gated by tenant.manage. The path segment is the key; the body carries { value }."
+          }
+        },
+        {
+          "name": "Feature flag — set",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-feature-set" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"enabled\": true\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/user-management/v1/tenant/features/spatial_expense_viz",
+              "host": ["{{baseUrl}}"],
+              "path": ["user-management", "v1", "tenant", "features", "spatial_expense_viz"]
+            },
+            "description": "Gated by tenant.manage. The path segment is the flag; the body carries { enabled }."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Expense",
+      "item": [
+        {
+          "name": "Create report (saves reportId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "if (res.data && res.data.id) {",
+                  "  pm.collectionVariables.set('reportId', res.data.id);",
+                  "  console.log('Saved reportId = ' + res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-expense-create" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"E2E Trip\",\n  \"currency\": \"USD\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/expense/v1/reports",
+              "host": ["{{baseUrl}}"],
+              "path": ["expense", "v1", "reports"]
+            },
+            "description": "Create a report (OPEN). Saves data.id into {{reportId}}."
+          }
+        },
+        {
+          "name": "Attach expense item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-expense-attach" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 4200,\n  \"currency\": \"USD\",\n  \"merchant\": \"E2E Diner\",\n  \"description\": \"dinner\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expense/v1/reports/{{reportId}}/expenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["expense", "v1", "reports", "{{reportId}}", "expenses"]
+            },
+            "description": "Amount is in integer minor units. Gives the report a non-zero total."
+          }
+        },
+        {
+          "name": "Submit report",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-expense-submit" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"please review\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/expense/v1/reports/{{reportId}}/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["expense", "v1", "reports", "{{reportId}}", "submit"]
+            },
+            "description": "OPEN → APPROVALS; emits expense.submitted. With the seeded tenant's default policy the chain may auto-complete straight to APPROVED (no pending slot)."
+          }
+        },
+        {
+          "name": "Pending approvals (my inbox)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-expense-pending" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/expense/v1/reports/approvals/pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["expense", "v1", "reports", "approvals", "pending"]
+            },
+            "description": "The current user's pending approval slots. Empty when the chain auto-completed."
+          }
+        },
+        {
+          "name": "Decide report (approve)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-expense-decide" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"approved\",\n  \"comment\": \"looks good\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/expense/v1/reports/{{reportId}}/decisions",
+              "host": ["{{baseUrl}}"],
+              "path": ["expense", "v1", "reports", "{{reportId}}", "decisions"]
+            },
+            "description": "Canonical engine-backed decision. Run only if Pending approvals returned a slot (otherwise the chain already completed and this 409s/no-ops)."
+          }
+        },
+        {
+          "name": "Get report",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-expense-get" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/expense/v1/reports/{{reportId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["expense", "v1", "reports", "{{reportId}}"]
+            },
+            "description": "Read back the report; data.status is lowercase (open|approvals|approved|rejected|reimbursed)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invoice",
+      "item": [
+        {
+          "name": "Create invoice (saves invoiceId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "if (res.data && res.data.id) {",
+                  "  pm.collectionVariables.set('invoiceId', res.data.id);",
+                  "  console.log('Saved invoiceId = ' + res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-invoice-create" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vendorName\": \"Acme\",\n  \"invoiceNumber\": \"INV-1001\",\n  \"invoiceDate\": \"2026-06-01\",\n  \"amountMinor\": 50000,\n  \"currency\": \"USD\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invoice/v1/invoices",
+              "host": ["{{baseUrl}}"],
+              "path": ["invoice", "v1", "invoices"]
+            },
+            "description": "Create the live invoice. amountMinor is integer minor units; currency is a 3-letter uppercase code. Saves data.id into {{invoiceId}}. Re-posting the same vendor+number+amount+currency is accepted (201) but flagged status:\"duplicate\" (no double-pay)."
+          }
+        },
+        {
+          "name": "Submit invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-invoice-submit" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/invoice/v1/invoices/{{invoiceId}}/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["invoice", "v1", "invoices", "{{invoiceId}}", "submit"]
+            },
+            "description": "Submit the invoice into the approval chain."
+          }
+        },
+        {
+          "name": "Decide invoice (approve)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-invoice-decide" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"approved\",\n  \"comment\": \"ok to pay\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/invoice/v1/invoices/{{invoiceId}}/decisions",
+              "host": ["{{baseUrl}}"],
+              "path": ["invoice", "v1", "invoices", "{{invoiceId}}", "decisions"]
+            },
+            "description": "Canonical engine-backed approval decision. On completion the invoice advances to Approved + the ERP outbox push fires."
+          }
+        },
+        {
+          "name": "Get invoice",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-invoice-get" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/invoice/v1/invoices/{{invoiceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["invoice", "v1", "invoices", "{{invoiceId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payroll",
+      "item": [
+        {
+          "name": "Create pay run (saves payRunId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const id = (res.data && res.data.id) || res.id;",
+                  "if (id) {",
+                  "  pm.collectionVariables.set('payRunId', id);",
+                  "  console.log('Saved payRunId = ' + id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-payroll-create" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodStart\": \"2026-06-01\",\n  \"periodEnd\": \"2026-06-30\",\n  \"payDate\": \"2026-07-05\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payroll/v1/pay-runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["payroll", "v1", "pay-runs"]
+            },
+            "description": "Queue a pay run as the requester. Saves the id into {{payRunId}}."
+          }
+        },
+        {
+          "name": "Calculate pay run",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-payroll-calc" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payroll/v1/pay-runs/{{payRunId}}/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["payroll", "v1", "pay-runs", "{{payRunId}}", "calculate"]
+            },
+            "description": "→ Calculated."
+          }
+        },
+        {
+          "name": "Approve pay run (SoD: requester denied → 403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-payroll-decide" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"approved\",\n  \"comment\": \"approved\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/payroll/v1/pay-runs/{{payRunId}}/decisions",
+              "host": ["{{baseUrl}}"],
+              "path": ["payroll", "v1", "pay-runs", "{{payRunId}}", "decisions"]
+            },
+            "description": "Separation of Duties: the seeded policy has excludeRequester:true, so the admin who created the run is excluded from approving it. As the requester this returns 403 — a SEPARATE approver (a second user granted PayRunApprove) must decide to advance the run to Approved."
+          }
+        },
+        {
+          "name": "Disburse pay run (Idempotency-Key)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-payroll-disburse" },
+              { "key": "Idempotency-Key", "value": "disburse-{{payRunId}}-001" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payroll/v1/pay-runs/{{payRunId}}/disburse",
+              "host": ["{{baseUrl}}"],
+              "path": ["payroll", "v1", "pay-runs", "{{payRunId}}", "disburse"]
+            },
+            "description": "Money write — requires the Idempotency-Key header (replays with the same key are no-ops). Succeeds only once the run is Approved (see the SoD note above)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reporting",
+      "item": [
+        {
+          "name": "Create definition (saves definitionId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "if (res.data && res.data.id) {",
+                  "  pm.collectionVariables.set('definitionId', res.data.id);",
+                  "  console.log('Saved definitionId = ' + res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-report-define" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Expense by month\",\n  \"spec\": {\n    \"measures\": [{ \"name\": \"total\", \"agg\": \"sum\", \"field\": \"amount\" }],\n    \"dimensions\": [{ \"name\": \"month\", \"field\": \"incurred_on\", \"grain\": \"month\" }],\n    \"filters\": [],\n    \"source\": \"expense_report\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/reporting/v1/report-definitions",
+              "host": ["{{baseUrl}}"],
+              "path": ["reporting", "v1", "report-definitions"]
+            },
+            "description": "The spec is validated structurally as data (measures/dimensions/filters/grain), never raw SQL. Saves data.id into {{definitionId}}. No definition is seeded, so create one before running."
+          }
+        },
+        {
+          "name": "Run definition (saves runId, async 202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "if (res.data && res.data.runId) {",
+                  "  pm.collectionVariables.set('runId', res.data.runId);",
+                  "  console.log('Saved runId = ' + res.data.runId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-report-run" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"definitionId\": \"{{definitionId}}\",\n  \"params\": {}\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/reporting/v1/report-runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["reporting", "v1", "report-runs"]
+            },
+            "description": "Asynchronous: returns 202 + { runId } with a Location header. Saves data.runId into {{runId}}, then poll the next request."
+          }
+        },
+        {
+          "name": "Get run (poll status)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantA}}" },
+              { "key": "X-Correlation-Id", "value": "postman-report-get" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reporting/v1/report-runs/{{runId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["reporting", "v1", "report-runs", "{{runId}}"]
+            },
+            "description": "Poll until data.status is succeeded, then read data.artifact_url."
+          }
+        }
+      ]
+    }
+  ]
+}

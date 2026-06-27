@@ -1,0 +1,34 @@
+{
+  "name": "reporting",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/reporting/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "target": "node",
+        "compiler": "tsc",
+        "outputPath": "dist/apps/reporting",
+        "main": "apps/reporting/src/index.ts",
+        "tsConfig": "apps/reporting/tsconfig.app.json",
+        "webpackConfig": "apps/reporting/webpack.config.js"
+      },
+      "configurations": {
+        "production": { "optimization": false, "outputHashing": "none" }
+      }
+    },
+    "serve": {
+      "executor": "@nx/js:node",
+      "options": { "buildTarget": "reporting:build" }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": { "jestConfig": "apps/reporting/jest.config.ts" }
+    },
+    "lint": { "executor": "@nx/eslint:lint" }
+  },
+  "tags": ["scope:app", "service:reporting"]
+}

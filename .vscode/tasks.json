@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Aegis: Up (build + run all locally)",
+      "type": "shell",
+      "command": "bash scripts/dev-up.sh",
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "detail": "Builds every service image, starts dockerized Postgres+Redis, runs all services wired together, applies migrations. Bound to Cmd+Shift+B."
+    },
+    {
+      "label": "Aegis: Down",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.all.yml down",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Aegis: Down + wipe data",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.all.yml down -v",
+      "problemMatcher": []
+    },
+    {
+      "label": "Aegis: Logs (all)",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.all.yml logs -f --tail=100",
+      "problemMatcher": []
+    },
+    {
+      "label": "Aegis: Migrate",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.all.yml run --rm migrate",
+      "problemMatcher": []
+    }
+  ]
+}

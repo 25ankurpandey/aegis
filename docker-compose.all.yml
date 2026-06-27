@@ -1,0 +1,146 @@
+# Aegis — full local stack: Postgres + Redis + all services, one network, zero manual setup.
+# One image (built from ./Dockerfile) runs every role via SERVICE_NAME + PROCESS_TYPE.
+# `bash scripts/dev-up.sh` (or VS Code Cmd+Shift+B) builds + starts everything.
+
+x-app: &app
+  image: aegis:local
+  build: { context: ., dockerfile: Dockerfile }
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    kafka: { condition: service_healthy }
+  networks: [aegis]
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: aegis
+      POSTGRES_USER: aegis_owner
+      POSTGRES_PASSWORD: aegis_local
+    ports: ["${AEGIS_POSTGRES_PORT:-5432}:5432"]
+    volumes:
+      - aegis_pg:/var/lib/postgresql/data
+      - ./scripts/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis_owner -d aegis"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [aegis]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${AEGIS_REDIS_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [aegis]
+
+  # Kafka — single-broker KRaft mode (no ZooKeeper). The event-bus transport for cross-process
+  # domain events (workflow + notification consumers run as PROCESS_TYPE=worker). Redis is cache-only.
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      CLUSTER_ID: "aegis-local-cluster-0001"
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "controller,broker"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports: ["${AEGIS_KAFKA_PORT:-9092}:9092"]
+    volumes:
+      - aegis_kafka:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    networks: [aegis]
+
+  # one-shot migrations (run explicitly: docker compose run --rm migrate)
+  migrate:
+    <<: *app
+    env_file: [apps/cli/.env]
+    environment: { PROCESS_TYPE: migration, SERVICE_NAME: cli }
+    restart: "no"
+    profiles: ["tools"]
+
+  gateway:
+    <<: *app
+    env_file: [apps/gateway/.env]
+    environment: { SERVICE_NAME: gateway }
+    ports: ["4000:4000"]
+
+  user-management:
+    <<: *app
+    env_file: [apps/user-management/.env]
+    environment: { SERVICE_NAME: user-management }
+    ports: ["4001:4001"]
+
+  expense:
+    <<: *app
+    env_file: [apps/expense/.env]
+    environment: { SERVICE_NAME: expense }
+    ports: ["4002:4002"]
+
+  payroll:
+    <<: *app
+    env_file: [apps/payroll/.env]
+    environment: { SERVICE_NAME: payroll }
+    ports: ["4003:4003"]
+
+  reporting:
+    <<: *app
+    env_file: [apps/reporting/.env]
+    environment: { SERVICE_NAME: reporting }
+    ports: ["4004:4004"]
+
+  workflow:
+    <<: *app
+    env_file: [apps/workflow/.env]
+    environment: { SERVICE_NAME: workflow }
+    ports: ["4005:4005"]
+
+  # Kafka consumer for workflow (PROCESS_TYPE=worker): subscribes to record.created/updated → runs rules.
+  # Same image as the api role; bootstrap.ts forks on PROCESS_TYPE to run consumers instead of HTTP.
+  workflow-worker:
+    <<: *app
+    env_file: [apps/workflow/.env]
+    environment: { SERVICE_NAME: workflow, PROCESS_TYPE: worker }
+
+  notification:
+    <<: *app
+    env_file: [apps/notification/.env]
+    environment: { SERVICE_NAME: notification }
+    ports: ["4006:4006"]
+
+  # Kafka consumer for notification (PROCESS_TYPE=worker): the event-only write path for notifications.
+  notification-worker:
+    <<: *app
+    env_file: [apps/notification/.env]
+    environment: { SERVICE_NAME: notification, PROCESS_TYPE: worker }
+
+  invoice:
+    <<: *app
+    env_file: [apps/invoice/.env]
+    environment: { SERVICE_NAME: invoice }
+    ports: ["4007:4007"]
+
+volumes:
+  aegis_pg:
+  aegis_kafka:
+
+networks:
+  aegis:
+    driver: bridge

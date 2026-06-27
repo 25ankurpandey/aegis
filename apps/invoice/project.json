@@ -1,0 +1,34 @@
+{
+  "name": "invoice",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/invoice/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "target": "node",
+        "compiler": "tsc",
+        "outputPath": "dist/apps/invoice",
+        "main": "apps/invoice/src/index.ts",
+        "tsConfig": "apps/invoice/tsconfig.app.json",
+        "webpackConfig": "apps/invoice/webpack.config.js"
+      },
+      "configurations": {
+        "production": { "optimization": false, "outputHashing": "none" }
+      }
+    },
+    "serve": {
+      "executor": "@nx/js:node",
+      "options": { "buildTarget": "invoice:build" }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": { "jestConfig": "apps/invoice/jest.config.ts" }
+    },
+    "lint": { "executor": "@nx/eslint:lint" }
+  },
+  "tags": ["scope:app", "service:invoice"]
+}

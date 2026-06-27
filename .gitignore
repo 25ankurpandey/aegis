@@ -1,0 +1,16 @@
+node_modules
+dist
+tmp
+.nx/cache
+.nx/workspace-data
+coverage
+*.log
+# Real secrets stay out; the committed dummy .env files (root + apps/*/.env) are intentional
+# so a fresh checkout runs locally with zero manual setup.
+.env.local
+.env.*.local
+*.secret
+!.env
+!.env.example
+!apps/**/.env
+.DS_Store

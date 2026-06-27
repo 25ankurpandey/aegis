@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aegis — Flow Coverage Dashboard</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2b3340;
+    --txt:#e6edf3; --muted:#9aa7b4; --dim:#6b7686;
+    --green:#3fb950; --green-bg:#0f2916;
+    --amber:#d29922; --amber-bg:#2b210a;
+    --red:#f85149; --red-bg:#2d1416;
+    --blue:#58a6ff; --blue-bg:#0d2238;
+    --purple:#bc8cff; --teal:#56d4c4;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;font-size:14px;}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  header{padding:24px 28px 8px}
+  h1{font-size:22px;margin:0 0 2px;font-weight:600}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 4px}
+  .stamp{color:var(--dim);font-size:12px}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:0 28px 60px}
+
+  /* summary cards */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0 22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+  .card .n{font-size:26px;font-weight:600;line-height:1.1}
+  .card .l{font-size:12px;color:var(--muted);margin-top:3px}
+  .card .bar{height:5px;border-radius:3px;background:var(--panel2);margin-top:10px;overflow:hidden}
+  .card .bar > i{display:block;height:100%;border-radius:3px}
+
+  /* controls */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;
+    position:sticky;top:0;background:var(--bg);padding:12px 0;z-index:5;border-bottom:1px solid var(--line)}
+  input[type=search],select{background:var(--panel);color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:13px;outline:none}
+  input[type=search]{min-width:230px;flex:1 1 230px}
+  input[type=search]:focus,select:focus{border-color:var(--blue)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{cursor:pointer;user-select:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);border-radius:20px;padding:5px 11px;font-size:12px}
+  .chip.on{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+  .resetbtn{cursor:pointer;background:transparent;border:1px solid var(--line);color:var(--muted);
+    border-radius:8px;padding:8px 12px;font-size:12.5px}
+  .resetbtn:hover{border-color:var(--blue);color:var(--blue)}
+  .count{color:var(--dim);font-size:12px;margin-left:auto}
+
+  /* suite group */
+  .suite-h{margin:26px 0 10px;font-size:13px;color:var(--purple);font-weight:600;
+    letter-spacing:.3px;text-transform:uppercase;border-bottom:1px solid var(--line);padding-bottom:6px}
+
+  /* flow rows */
+  .flow{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+  .flow.hide{display:none}
+  .row{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+  .row:hover{background:var(--panel2)}
+  .fid{font-family:ui-monospace,monospace;font-size:12px;color:var(--dim);min-width:78px}
+  .fname{flex:1;font-weight:500}
+  .fname .tier{font-size:11px;color:var(--dim);font-weight:400;margin-left:8px}
+  .badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .b{font-size:11px;padding:3px 8px;border-radius:6px;white-space:nowrap;font-weight:500;border:1px solid transparent}
+  .b.impl-y{color:var(--green);background:var(--green-bg);border-color:#1c4427}
+  .b.impl-p{color:var(--amber);background:var(--amber-bg);border-color:#4d3a10}
+  .b.impl-n{color:var(--red);background:var(--red-bg);border-color:#5a2326}
+  .b.t-live{color:var(--green);background:var(--green-bg);border-color:#1c4427}
+  .b.t-int{color:var(--blue);background:var(--blue-bg);border-color:#1d4063}
+  .b.t-none{color:var(--dim);background:var(--panel2);border-color:var(--line)}
+  .caret{color:var(--dim);font-size:12px;transition:transform .15s;width:12px}
+  .flow.open .caret{transform:rotate(90deg)}
+
+  .detail{display:none;padding:2px 16px 16px;border-top:1px solid var(--line)}
+  .flow.open .detail{display:block}
+  .detail .seg{margin-top:12px}
+  .detail .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);margin-bottom:4px}
+  .detail .val{font-size:13px;color:var(--txt)}
+  .svcs{display:flex;flex-wrap:wrap;gap:5px}
+  .svc{font-size:11px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 8px;color:var(--muted)}
+  .files{margin:0;padding:0;list-style:none}
+  .files li{padding:2px 0}
+  .files .fk{color:var(--dim);font-size:11px;text-transform:uppercase;margin-right:6px}
+  .howto{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .howto .step{font-family:ui-monospace,monospace;font-size:12px;color:var(--teal);white-space:pre-wrap;word-break:break-word}
+  .howto .note{color:var(--muted);font-size:12.5px;margin-top:6px}
+  .gap{color:var(--amber);font-size:12.5px;margin-top:8px;display:flex;gap:6px}
+  .gap b{color:var(--amber);font-weight:600}
+  footer{color:var(--dim);font-size:12px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+</style>
+</head>
+<body>
+<header>
+  <h1>Aegis — flow coverage dashboard</h1>
+  <p class="sub">Every user/system flow across the platform: implemented? tested? how do I test it myself?</p>
+  <p class="stamp">Source of truth: <span class="mono">SPEC.md</span> · <span class="mono">docs/testing/flow-catalogue.md</span> (FLOW-NNN) · <span class="mono">docs/testing/FLOWS_v2.md</span> (FV2-NNN) · cross-referenced against shipped code + test files. Generated 2026-06-27.</p>
+</header>
+
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search flows, services, files, endpoints…" autocomplete="off" />
+    <select id="svcSel"><option value="">All services</option></select>
+    <div class="chips" id="statusChips">
+      <span class="chip on" data-st="all">All</span>
+      <span class="chip" data-st="live">Live E2E</span>
+      <span class="chip" data-st="int">Integration</span>
+      <span class="chip" data-st="none">Untested</span>
+      <span class="chip" data-st="pending">Impl pending</span>
+    </div>
+    <button class="resetbtn" id="reset">Reset</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div id="list"></div>
+
+  <footer>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--green)"></i> Live E2E — runs against a real dockerized stack (Postgres+RLS, Redis, Kafka)</span>
+      <span><i class="dot" style="background:var(--blue)"></i> Integration — in-process/mocked test (jest, in-memory bus, txn test DB or sequelize mock)</span>
+      <span><i class="dot" style="background:var(--dim)"></i> No automated test yet</span>
+      <span><i class="dot" style="background:var(--amber)"></i> Implementation gap vs spec</span>
+    </div>
+    <p style="margin-top:12px">Per-flow data lives in the <span class="mono">FLOWS</span> array at the top of this file's script block — edit it to update coverage as tests/features land. Statuses reflect the actual files on disk, not the catalogue's aspiration. The live-E2E "how to test" steps come from <span class="mono">docs/testing/LIVE_E2E_RUNBOOK.md</span>; runnable HTTP harness specs live in <span class="mono">apps/e2e-tests/live/*.e2e.spec.ts</span> (skipped unless <span class="mono">E2E_BASE_URL</span> is set).</p>
+  </footer>
+</div>
+
+<script>
+/* ============================================================================
+   AEGIS FLOW DATA — single source the dashboard renders from.
+   Edit entries here as coverage grows. Fields:
+     id, title, suite, services[]
+     impl:   "yes" | "pending" | "no"   (code shipped?)
+     implRefs[]:  key file:line-ish references proving it
+     tested: "live" | "int" | "none"    (best automated coverage that exists)
+     testFiles[]: { tier:"live"|"int", path }   (actual *.spec.ts on disk)
+     howto:  { kind:"curl"|"jest"|"none", cmd, note }   (how the owner tests it)
+     gap:    optional string — implementation gap vs SPEC/catalogue
+   ============================================================================ */
+const FLOWS = [
+/* ---- Suite A — Platform & tenancy foundation ---- */
+{id:"FLOW-001",title:"Platform bootstrap & migration",suite:"A. Platform & tenancy foundation",
+ services:["cli","@aegis/db"],impl:"yes",
+ implRefs:["apps/cli/src/migrations/0001..0020_*.ts (21 numbered Umzug migrations)","apps/cli/src/seeders/0001..0005_*.ts","scripts/start.sh PROCESS_TYPE=migration"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/cli/test/migrations/optimistic-locking.spec.ts"},{tier:"int",path:"apps/cli/test/migrations/partial-unique-indexes.spec.ts"},{tier:"live",path:"docs/testing/LIVE_E2E_RUNBOOK.md §1 (migration/RLS posture verified live)"}],
+ howto:{kind:"curl",cmd:"docker compose run --rm migration   # PROCESS_TYPE=migration\npsql -c \"select count(*) from pg_policies where policyname like '%tenant%';\"\npsql -c \"select rolbypassrls from pg_roles where rolname=current_user;\"",note:"Runbook §1 — expect migrations 0001..0020 applied, rolbypassrls=false, one RESTRICTIVE tenant policy per table."}},
+
+{id:"FLOW-002",title:"Tenant onboarding (provision an organization)",suite:"A. Platform & tenancy foundation",
+ services:["user-management","@aegis/access-control","@aegis/db","@aegis/events"],impl:"pending",
+ implRefs:["apps/user-management/src/services/pap.service.ts (role/permission admin)","apps/cli/src/seeders/0002_demo_tenant.ts + 0005_demo_tenant_b.ts (tenants seeded, not API-provisioned)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/user-management/test/services/pap.service.spec.ts"},{tier:"int",path:"apps/user-management/test/services/tenant-config.service.spec.ts"}],
+ howto:{kind:"none",cmd:"# No POST /v1/tenants route shipped.\n# Tenants are created via the seeders (cli), then admin logs in.",note:"Tenant config + features are live (GET /config, PUT /config/:key); runtime tenant *creation* over HTTP is not exposed."},
+ gap:"No POST /v1/tenants endpoint in auth/tenant controllers — tenants are seeder-provisioned, not API-provisioned. Catalogue FLOW-002 step 1 is aspirational."},
+
+{id:"FLOW-003",title:"Health, readiness & graceful dependency failure",suite:"A. Platform & tenancy foundation",
+ services:["gateway","user-management","expense","invoice","payroll","reporting","workflow","notification"],impl:"yes",
+ implRefs:["apps/*/src/controllers/health.controller.ts (every service)","libs/service-core/src/bootstrap/shutdown.ts","libs/service-core/src/bootstrap/shutdown.spec.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/service-core/src/bootstrap/shutdown.spec.ts"},{tier:"live",path:"docs/testing/LIVE_E2E_RUNBOOK.md §1 health gate"}],
+ howto:{kind:"curl",cmd:"curl -s localhost:4000/health\ncurl -s 'localhost:4000/health?details=true'",note:"Runbook §1 — expect 200 {status:ok}; details surfaces db/cache/bus up. /health is the only unauthenticated route."}},
+
+/* ---- Suite B — Identity & sessions ---- */
+{id:"FLOW-010",title:"User invite (PAP issues an invitation)",suite:"B. Identity & sessions",
+ services:["user-management"],impl:"yes",
+ implRefs:["apps/user-management/src/controllers/invite.controller.ts","apps/user-management/src/services/invite.service.ts","apps/cli/src/migrations/0028_identity_admin_surfaces.ts"],
+ tested:"unit",
+ testFiles:[{tier:"unit",path:"apps/user-management/test/services/admin-surfaces.spec.ts"},{tier:"unit",path:"apps/user-management/test/validators/admin-surface.validator.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/user-management/v1/invites \\\n  -H 'authorization: Bearer <ADMIN_JWT>' -H 'x-tenant-id: <TENANT_A>' -H 'content-type: application/json' \\\n  -d '{\"email\":\"dana@demo-org.test\",\"scope\":\"own_and_team\"}'",note:"Expect 201; response includes a one-time token; DB stores only token_hash."}},
+
+{id:"FLOW-011",title:"Register a user",suite:"B. Identity & sessions",
+ services:["user-management"],impl:"yes",
+ implRefs:["apps/user-management/src/controllers/auth.controller.ts:15 (@httpPost /register)","apps/user-management/src/utils/password.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/user-management/test/validators/auth.validator.spec.ts"},{tier:"int",path:"apps/user-management/test/utils/password.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/auth.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/auth/register \\\n  -H 'x-tenant-id: <TENANT_A>' -H 'content-type: application/json' \\\n  -d '{\"email\":\"e2e-user@demo-org.test\",\"password\":\"...\",\"displayName\":\"Dana R.\"}'",note:"Runbook §3a — tenant comes from the HEADER, not the body. Expect 201 {id,email}."},
+ gap:"Invite-token acceptance is still planned; shipped register is credential-based."},
+
+{id:"FLOW-012",title:"Login & JWT issuance (reference IdP)",suite:"B. Identity & sessions",
+ services:["gateway","user-management"],impl:"yes",
+ implRefs:["apps/user-management/src/controllers/auth.controller.ts:20 (@httpPost /login), :25 (@httpGet /me)","libs/service-core/src/auth/internal-auth.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/user-management/test/validators/auth.validator.spec.ts"},{tier:"unit",path:"apps/user-management/test/services/auth-session.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/auth.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"TOKEN=$(curl -s -X POST localhost:4000/auth/login \\\n  -H 'x-tenant-id: <TENANT_A>' -H 'content-type: application/json' \\\n  -d '{\"email\":\"admin@demo-org.test\",\"password\":\"...\"}' | jq -r .token)\ncurl -s localhost:4000/auth/me -H \"authorization: Bearer $TOKEN\" -H 'x-tenant-id: <TENANT_A>'",note:"Runbook §3b/§3c — expect 200 with roles+permissions and a sessionId on login. Missing tenant header → fail-closed 4xx; A-token + B-header → 403 (auth.e2e.spec.ts asserts both)."}},
+
+{id:"FLOW-013",title:"Workspace switch (multi-tenant membership)",suite:"B. Identity & sessions",
+ services:["user-management"],impl:"no",
+ implRefs:["— no POST /v1/memberships/active route shipped"],
+ tested:"none",testFiles:[],
+ howto:{kind:"none",cmd:"# Not exposed. active_workspace exists in the data model; no switch endpoint.",note:""},
+ gap:"No workspace-switch endpoint. To act in another tenant you log in with that tenant's header."},
+
+{id:"FLOW-014",title:"Session revocation row",suite:"B. Identity & sessions",
+ services:["user-management"],impl:"yes",
+ implRefs:["apps/user-management/src/controllers/session.controller.ts","apps/user-management/src/services/session.service.ts","apps/cli/src/migrations/0028_identity_admin_surfaces.ts"],
+ tested:"unit",testFiles:[{tier:"unit",path:"apps/user-management/test/services/admin-surfaces.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s localhost:4000/user-management/v1/sessions \\\n  -H 'authorization: Bearer <ADMIN_JWT>' -H 'x-tenant-id: <TENANT_A>'\ncurl -s -X DELETE localhost:4000/user-management/v1/sessions/<session-id> \\\n  -H 'authorization: Bearer <ADMIN_JWT>' -H 'x-tenant-id: <TENANT_A>'",note:"Expect the session row to move to status=revoked. Per-request token introspection remains hardening."}},
+
+/* ---- Suite C — Access-control core (PDP/PEP/PAP) ---- */
+{id:"FLOW-020",title:"Define a custom role at runtime (PAP)",suite:"C. Access-control core",
+ services:["user-management","@aegis/access-control"],impl:"yes",
+ implRefs:["apps/user-management/src/controllers/role.controller.ts:24 (@httpPost /roles)","apps/user-management/src/services/pap.service.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/user-management/test/services/pap.service.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/roles -H \"authorization: Bearer $ADMIN\" \\\n  -H 'x-tenant-id: <TENANT_A>' -H 'content-type: application/json' \\\n  -d '{\"name\":\"RegionalApprover\",\"permissions\":[\"expense.report.view\",\"expense.report.approve\"]}'",note:"role_permissions join is the single source of truth (no policy-engine grouping hack)."}},
+
+{id:"FLOW-021",title:"Assign / revoke a custom role at runtime",suite:"C. Access-control core",
+ services:["user-management","@aegis/access-control"],impl:"pending",
+ implRefs:["apps/user-management/src/controllers/role.controller.ts:29 (@httpPost /users/:userId/role)","libs/access-control/src/watcher.ts (PIP cache invalidation)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/user-management/test/services/pap.service.spec.ts"},{tier:"int",path:"libs/access-control/src/watcher.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/users/<USER_ID>/role -H \"authorization: Bearer $ADMIN\" \\\n  -H 'x-tenant-id: <TENANT_A>' -H 'content-type: application/json' \\\n  -d '{\"roleId\":\"<RegionalApprover>\",\"scope\":\"OwnAndTeam\"}'",note:"Assign is live; the PDP picks the change up on the next decision (watcher invalidates the PIP cache)."},
+ gap:"Assign route is singular /users/:id/role; no DELETE revoke route on disk yet (catalogue FLOW-021 step 3 DELETE is aspirational)."},
+
+{id:"FLOW-022",title:"Allowed authorization decision (RBAC + ABAC)",suite:"C. Access-control core",
+ services:["expense","@aegis/access-control"],impl:"yes",
+ implRefs:["libs/access-control/src/pdp.ts (decide)","libs/access-control/src/pep.ts (authorize middleware)","libs/access-control/src/condition-evaluator.ts","libs/access-control/src/scope.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/access-control/src/pdp.spec.ts"},{tier:"int",path:"libs/access-control/src/pep.spec.ts"},{tier:"int",path:"libs/access-control/src/enforcer.spec.ts"},{tier:"int",path:"libs/access-control/src/condition-evaluator.spec.ts"},{tier:"int",path:"libs/access-control/src/scope.spec.ts"}],
+ howto:{kind:"curl",cmd:"# Exercised end-to-end via expense approve (FLOW-032 / Runbook §4e):\ncurl -s -X POST localhost:4000/expense/v1/reports/<RID>/decisions \\\n  -H \"authorization: Bearer $APPROVER\" -H 'x-tenant-id: <T>' \\\n  -d '{\"decision\":\"approved\"}'",note:"PDP returns {allow,reason,obligations}; RBAC grants + ABAC condition (own-team, amount≤limit) hold."}},
+
+{id:"FLOW-023",title:"Denied authorization decision (fail-closed)",suite:"C. Access-control core",
+ services:["expense","@aegis/access-control"],impl:"yes",
+ implRefs:["libs/access-control/src/pdp.ts (fail-closed default)","libs/access-control/src/enforcer.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/access-control/src/pdp.spec.ts"},{tier:"int",path:"libs/access-control/src/enforcer.spec.ts"},{tier:"int",path:"libs/access-control/src/pep.spec.ts"}],
+ howto:{kind:"curl",cmd:"# A Member (no approve perm) hits the decide route → expect 403:\ncurl -s -o /dev/null -w '%{http_code}\\n' -X POST \\\n  localhost:4000/expense/v1/reports/<RID>/decisions \\\n  -H \"authorization: Bearer $MEMBER\" -H 'x-tenant-id: <T>' -d '{\"decision\":\"approved\"}'",note:"Expect 403 with {errors:[{code,type,message,details,correlationId}]}; PDP never default-allows."}},
+
+{id:"FLOW-024",title:"Cross-tenant isolation attempt (MUST fail)",suite:"C. Access-control core",
+ services:["expense","@aegis/db"],impl:"yes",
+ implRefs:["libs/db/src/ (withTenantTransaction + SET LOCAL app.current_tenant)","RLS migrations: FORCE ROW LEVEL SECURITY + RESTRICTIVE policy per table"],
+ tested:"live",
+ testFiles:[{tier:"live",path:"apps/e2e-tests/live/rls-isolation.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"# Tenant-B token tries to read Tenant-A's report → RLS hides it → 404:\ncurl -s -o /dev/null -w '%{http_code}\\n' localhost:4000/expense/v1/reports/<A_RID> \\\n  -H \"authorization: Bearer $B_TOKEN\" -H 'x-tenant-id: <TENANT_B>'",note:"Runbook §5 — expect 404 (not 403, to avoid confirming existence). rls-isolation.e2e.spec.ts also asserts lists never leak across tenants."}},
+
+/* ---- Suite D — Expense lifecycle ---- */
+{id:"FLOW-030",title:"Create expense report & items (draft/open)",suite:"D. Expense lifecycle",
+ services:["expense"],impl:"yes",
+ implRefs:["apps/expense/src/controllers/expense-report.controller.ts:35 (POST /reports), :42 (POST /reports/:id/expenses)","apps/expense/src/services/expense.service.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/expense/test/services/expense.service.spec.ts"},{tier:"int",path:"apps/expense/test/repositories/expense-report.repository.spec.ts"},{tier:"int",path:"apps/expense/test/validators/expense-report.validator.spec.ts"},{tier:"int",path:"apps/expense/test/validators/expense.validator.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/expense-approval.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"RID=$(curl -s -X POST localhost:4000/expense/v1/reports -H \"authorization: Bearer $M\" \\\n  -H 'x-tenant-id: <T>' -d '{\"name\":\"Q3 travel\"}' | jq -r .id)\ncurl -s -X POST localhost:4000/expense/v1/reports/$RID/expenses -H \"authorization: Bearer $M\" \\\n  -H 'x-tenant-id: <T>' -d '{\"amountMinor\":12000,\"currency\":\"USD\",\"merchant\":\"Acme\"}'",note:"Runbook §4a/§4b — status starts open; items roll up total. No GL codes / no extracted line items (SPEC §10.1). DTO statuses are lowercase: open|approvals|approved."}},
+
+{id:"FLOW-031",title:"Submit → enters shared approval engine",suite:"D. Expense lifecycle",
+ services:["expense","@aegis/approvals","@aegis/events","notification"],impl:"yes",
+ implRefs:["apps/expense/src/controllers/expense-report.controller.ts:53 (POST /reports/:id/submit)","apps/expense/src/services/expense.service.ts (requestApproval — engine NOW wired)","apps/expense/src/bootstrap.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/e2e-tests/test/flow1-approval-chain.spec.ts"},{tier:"int",path:"apps/expense/test/services/expense.service.spec.ts"},{tier:"int",path:"libs/approvals/src/approval.service.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/expense-approval.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/expense/v1/reports/$RID/submit \\\n  -H \"authorization: Bearer $M\" -H 'x-tenant-id: <T>'",note:"Runbook §4c — open → approvals; emits expense.submitted, staged in event_outbox. flow1-approval-chain.spec.ts proves submit drives @aegis/approvals and advances on completion."}},
+
+{id:"FLOW-032",title:"Approve → ERP push via connector framework",suite:"D. Expense lifecycle",
+ services:["expense","@aegis/connectors","@aegis/events"],impl:"yes",
+ implRefs:["expense-report.controller.ts:70 (POST /reports/:id/decisions), :103 (POST /reports/:id/approve)","libs/connectors/src/mock/ledger-one.ts, finovo.ts, acct-bridge.ts","libs/connectors/src/durable-sync.ts (idempotent push log)","apps/workflow/src/consumers/connector-sync.consumer.ts (ERP push off-path)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/invoice/test/services/invoice-approve-erp.spec.ts"},{tier:"int",path:"libs/connectors/src/connectors.spec.ts"},{tier:"int",path:"libs/connectors/src/durable-sync.spec.ts"},{tier:"int",path:"apps/workflow/test/consumers/connector-sync.consumer.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/expense-approval.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/expense/v1/reports/$RID/decisions \\\n  -H \"authorization: Bearer $APPROVER\" -H 'x-tenant-id: <T>' -d '{\"decision\":\"approved\"}'",note:"Runbook §4 — approve → approved; ConnectorPushRequested staged, connector-sync worker pushes to the bound mock ERP idempotently. Replay with same key is a no-op."}},
+
+{id:"FLOW-033",title:"Reject → recall/reopen → resubmit",suite:"D. Expense lifecycle",
+ services:["expense","@aegis/approvals"],impl:"yes",
+ implRefs:["expense-report.controller.ts:123 (POST /reports/:id/reject), :148 (POST /reports/:id/recall), :134 (POST /reports/:id/reimburse)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/expense/test/services/expense.service.spec.ts"},{tier:"int",path:"apps/expense/test/services/expense-detail.service.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/expense/v1/reports/$RID/reject \\\n  -H \"authorization: Bearer $APPROVER\" -H 'x-tenant-id: <T>' -d '{\"comment\":\"missing receipt\"}'\n# submitter recalls, edits, resubmits:\ncurl -s -X POST localhost:4000/expense/v1/reports/$RID/recall -H \"authorization: Bearer $M\" -H 'x-tenant-id: <T>'",note:"State machine: approved is terminal-locked (409 on illegal transition)."}},
+
+/* ---- Suite E — Invoice lifecycle ---- */
+{id:"FLOW-040",title:"Create invoice (header) → routed to review",suite:"E. Invoice lifecycle",
+ services:["invoice","@aegis/events"],impl:"yes",
+ implRefs:["apps/invoice/src/controllers/invoice.controller.ts:23 (POST /invoices), :55 (POST /invoices/:id/submit)","apps/invoice/src/services/invoice.service.ts (requestApproval wired)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/invoice/test/validators/invoice.validator.spec.ts"},{tier:"int",path:"apps/invoice/test/services/invoice-approval-engine.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/invoice/v1/invoices -H \"authorization: Bearer $CLERK\" \\\n  -H 'x-tenant-id: <T>' -d '{\"vendorName\":\"Acme Freight\",\"invoiceNumber\":\"INV-7781\",\"amountMinor\":125000,\"currency\":\"USD\"}'",note:"Runbook §7a — header-level only (no line items / no GL codes, SPEC §10). Expect 201, status pending_review (the live winner)."}},
+
+{id:"FLOW-041",title:"Duplicate detection (MUST catch the second)",suite:"E. Invoice lifecycle",
+ services:["invoice"],impl:"yes",
+ implRefs:["invoice.service.ts (dedup gate: tenant_id+vendor_name+invoice_number+amount_minor)","apps/cli/src/migrations/0017_invoice_dedup.ts (partial-unique + invoice_duplicates)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/invoice/test/services/invoice-dedup-concurrency.spec.ts"},{tier:"int",path:"apps/cli/test/migrations/partial-unique-indexes.spec.ts"}],
+ howto:{kind:"curl",cmd:"# Re-post the SAME (vendor, number, amount) → flagged duplicate:\ncurl -s -X POST localhost:4000/invoice/v1/invoices -H \"authorization: Bearer $CLERK\" \\\n  -H 'x-tenant-id: <T>' -d '{\"vendorName\":\"Acme Freight\",\"invoiceNumber\":\"INV-7781\",\"amountMinor\":125000,\"currency\":\"USD\"}'",note:"Runbook §7b/§7c — expect 201 status=duplicate; exactly one live winner + one duplicate link row. Dedup is tenant-scoped (§7d)."}},
+
+{id:"FLOW-042",title:"Approve invoice (with optimistic lock)",suite:"E. Invoice lifecycle",
+ services:["invoice","@aegis/approvals","@aegis/events"],impl:"pending",
+ implRefs:["invoice.controller.ts:67 (POST /invoices/:id/decisions), :76 (POST /invoices/:id/approve)","apps/invoice/src/repositories/ (lock_version)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/invoice/test/services/invoice-approval-engine.spec.ts"},{tier:"int",path:"apps/invoice/test/services/invoice-approve-erp.spec.ts"},{tier:"int",path:"apps/invoice/test/repositories/invoice-optimistic-lock.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/invoice/v1/invoices/<ID>/decisions \\\n  -H \"authorization: Bearer $APPROVER\" -H 'x-tenant-id: <T>' -d '{\"decision\":\"approved\"}'",note:"Approve + multi-level chain + optimistic lock (409 on stale write) are tested."},
+ gap:"PO-variance hold (catalogue FLOW-042 variance_hold path) is intentionally OUT of scope per SPEC §10.1 (no PO reference, no matching/threshold/variance). Only status lifecycle + approval + duplicate guard ship."},
+
+/* ---- Suite F — Workflow & approvals ---- */
+{id:"FLOW-050",title:"Workflow rule fires on a domain event",suite:"F. Workflow & approvals",
+ services:["workflow","@aegis/events","notification"],impl:"yes",
+ implRefs:["apps/workflow/src/controllers/rule.controller.ts:19 (POST /rules), :36 (POST /rules/:id/run)","apps/workflow/src/engine/ (rules-as-data evaluator)","apps/workflow/src/consumers/approval-trigger.ts (real domain trigger)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/workflow/test/engine/aggregate.spec.ts"},{tier:"int",path:"apps/workflow/test/consumers/approval-trigger.spec.ts"},{tier:"int",path:"apps/workflow/test/services/rule-activity.spec.ts"},{tier:"int",path:"apps/workflow/test/integration/rule-eventing-contract.integration.spec.ts"},{tier:"int",path:"apps/e2e-tests/test/flow2-eventing-fanout.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/workflow/v1/rules -H \"authorization: Bearer $ADMIN\" \\\n  -H 'x-tenant-id: <T>' -d '{\"name\":\"big-expense\",\"steps\":[{\"field\":\"total_amount_minor\",\"operator\":\">\",\"value\":500000}],\"actions\":[...]}'\n# then submit a large expense report to trip it (FLOW-031).",note:"flow2-eventing-fanout.spec.ts proves one domain event fans out to workflow + notification consumers over the real (in-process) bus."}},
+
+{id:"FLOW-051",title:"Multi-level approval chain",suite:"F. Workflow & approvals",
+ services:["@aegis/approvals","expense","invoice","notification"],impl:"yes",
+ implRefs:["libs/approvals/src/approval.service.ts (sequential/parallel/quorum, evaluateCompletion)","libs/approvals/src/resolver.ts (manager-chain, threshold, group expansion)","apps/cli/src/migrations/0012_approvals.ts, 0013_approvals_supersede.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/approvals/src/approval.service.spec.ts"},{tier:"int",path:"libs/approvals/src/approval.resolution.spec.ts"},{tier:"int",path:"apps/e2e-tests/test/flow1-approval-chain.spec.ts"}],
+ howto:{kind:"jest",cmd:"npx nx test approvals\nnpx nx test e2e-tests --testFile=flow1-approval-chain.spec.ts",note:"FLOWS_v2 K-suite (FV2-100..114): sequential, parallel+quorum, threshold gate, manager source, group expansion, SoD excludeRequester, reject short-circuit, no-double-vote, reassign-supersede, idempotent re-request — all driven against ApprovalService."}},
+
+{id:"FLOW-052",title:"Delegated approval (sub + act)",suite:"F. Workflow & approvals",
+ services:["@aegis/approvals","@aegis/access-control"],impl:"no",
+ implRefs:["— delegation token (sub+act) handling not present in approval.service.ts"],
+ tested:"none",testFiles:[],
+ howto:{kind:"none",cmd:"# Not implemented. Token-exchange/delegation is documented but the act-claim path is not coded.",note:""},
+ gap:"Delegated approval (RFC-8693 sub+act on the approval decide path) is not on disk."},
+
+/* ---- Suite G — Payroll ---- */
+{id:"FLOW-060",title:"Onboard employee with encrypted PII fields",suite:"G. Payroll",
+ services:["payroll","@aegis/db"],impl:"yes",
+ implRefs:["apps/payroll/src/controllers/employee.controller.ts","apps/payroll/src/utils/field-crypto.ts (AES-256-GCM envelopes)","apps/payroll/src/models/employee.model.ts (*_enc columns)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/payroll/test/utils/field-crypto.spec.ts"},{tier:"int",path:"apps/payroll/test/validators/employee.validator.spec.ts"},{tier:"int",path:"apps/payroll/test/services/employee-sensitive-audit.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/payroll/v1/employees -H \"authorization: Bearer $PADMIN\" \\\n  -H 'x-tenant-id: <T>' -d '{\"bankAccount\":\"...\",\"nationalId\":\"...\",\"contract\":{\"baseAmountMinor\":500000,\"currency\":\"USD\",\"payFrequency\":\"monthly\"}}'\npsql -c \"select bank_account_enc from employees limit 1;\"  # ciphertext, never plaintext",note:"field-crypto.spec.ts proves *_enc columns are AES-256-GCM envelopes; sensitive plaintext never lands in a column or the audit payload."}},
+
+{id:"FLOW-061",title:"Pay run: draft → calculate",suite:"G. Payroll",
+ services:["payroll"],impl:"yes",
+ implRefs:["apps/payroll/src/controllers/pay-run.controller.ts:16 (POST /pay-runs), :21 (POST /pay-runs/:id/calculate)","apps/payroll/src/utils/tax-engine.ts (jurisdiction + effective-dated rules)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/payroll/test/services/pay-run-calculate.spec.ts"},{tier:"int",path:"apps/payroll/test/utils/tax-engine.spec.ts"},{tier:"int",path:"apps/payroll/test/repositories/employee-pay-items-effective.spec.ts"},{tier:"int",path:"apps/payroll/test/validators/pay-run.validator.spec.ts"}],
+ howto:{kind:"curl",cmd:"PRID=$(curl -s -X POST localhost:4000/payroll/v1/pay-runs -H \"authorization: Bearer $PROC\" \\\n  -H 'x-tenant-id: <T>' -d '{\"payCalendarId\":\"...\",\"periodStart\":\"...\",\"periodEnd\":\"...\",\"type\":\"regular\"}' | jq -r .id)\ncurl -s -X POST localhost:4000/payroll/v1/pay-runs/$PRID/calculate -H \"authorization: Bearer $PROC\" -H 'x-tenant-id: <T>'",note:"Runbook §6a/§6b — draft → calculated; gross→taxable→net per employee resolving tax by (jurisdiction, effective date); net_enc stored encrypted."}},
+
+{id:"FLOW-062",title:"Approve with maker-checker (segregation of duties)",suite:"G. Payroll",
+ services:["payroll","@aegis/access-control"],impl:"yes",
+ implRefs:["pay-run.controller.ts:33 (POST /pay-runs/:id/decisions), :52 (POST /pay-runs/:id/approve)","apps/payroll/src/services/pay-run.service.ts (hard SoD guard: approver ≠ run editor)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/payroll/test/services/pay-run-approval.spec.ts"},{tier:"int",path:"apps/payroll/test/repositories/pay-run-versioned.spec.ts"},{tier:"int",path:"apps/payroll/test/services/pay-run-activity.spec.ts"}],
+ howto:{kind:"curl",cmd:"# The maker (creator) tries to approve → SoD denies (403):\ncurl -s -o /dev/null -w '%{http_code}\\n' -X POST \\\n  localhost:4000/payroll/v1/pay-runs/$PRID/decisions \\\n  -H \"authorization: Bearer $PROC\" -H 'x-tenant-id: <T>' -d '{\"decision\":\"approved\"}'\n# A SEPARATE approver then approves → 200.",note:"Runbook §6c — expect 403 for the requester (\"approver must differ from the run editor\"). pay-run-approval.spec.ts asserts the SoD boundary + snapshot lock."}},
+
+{id:"FLOW-063",title:"Field masking on payslip read (PEP obligations)",suite:"G. Payroll",
+ services:["payroll","@aegis/access-control"],impl:"pending",
+ implRefs:["apps/payroll/src/services/ (masking obligation from PDP)","apps/payroll/test/services/employee-sensitive-audit.spec.ts (sensitive_read audit)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/payroll/test/services/employee-sensitive-audit.spec.ts"},{tier:"int",path:"libs/access-control/src/pep.spec.ts"}],
+ howto:{kind:"none",cmd:"# Sensitive-read auditing is tested; a dedicated GET /payslips/:id\n# masking-by-role endpoint is not separately routed.",note:"PEP masking obligations + sensitive_read audit are covered at the unit level."},
+ gap:"No standalone payslip-read controller route surfaced; masking is verified via PEP obligation + sensitive-audit unit tests, not an HTTP payslip endpoint."},
+
+{id:"FLOW-064",title:"Disburse → ledger → settlement (idempotent)",suite:"G. Payroll",
+ services:["payroll","@aegis/connectors","@aegis/events"],impl:"yes",
+ implRefs:["pay-run.controller.ts:57 (POST /pay-runs/:id/disburse)","apps/payroll/src/services/pay-run.service.ts (append-only ledger_entries, idempotency key)","libs/connectors/src/durable-sync.ts"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/payroll/test/services/pay-run-disburse-erp.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/payroll/v1/pay-runs/$PRID/disburse \\\n  -H \"authorization: Bearer $DISBURSER\" -H 'x-tenant-id: <T>' -H 'idempotency-key: <UUID>'",note:"pay-run-disburse-erp.spec.ts: builds payment_batch + payments (unique idempotency key) + append-only double-entry ledger; replay with same key pays nothing."}},
+
+/* ---- Suite H — Reporting ---- */
+{id:"FLOW-070",title:"Run a report with column masking",suite:"H. Reporting",
+ services:["reporting","@aegis/db","@aegis/access-control"],impl:"pending",
+ implRefs:["apps/reporting/src/controllers/report-definition.controller.ts:20 (POST /report-definitions)","apps/reporting/src/controllers/report-run.controller.ts:21 (POST /report-runs), :28 (GET /report-runs/:id)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/reporting/test/validators/report-definition.validator.spec.ts"},{tier:"int",path:"apps/reporting/test/validators/report-run.validator.spec.ts"},{tier:"int",path:"apps/reporting/test/services/reporting-activity.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s -X POST localhost:4000/reporting/v1/report-runs -H \"authorization: Bearer $FIN\" \\\n  -H 'x-tenant-id: <T>' -d '{\"definitionId\":\"...\",\"params\":{}}'\ncurl -s localhost:4000/reporting/v1/report-runs/<RUN_ID> -H \"authorization: Bearer $FIN\" -H 'x-tenant-id: <T>'",note:"Definition + run controllers + validators + activity ship and are unit-tested."},
+ gap:"Async run execution, column-masking compiler, and a GET …/data endpoint are not on disk yet — coverage is validator/activity-level. Catalogue FLOW-070 steps 3–4 (full vs masked render) are not E2E-runnable."},
+
+{id:"FLOW-071",title:"Scope-keyed result cache (no cross-user leakage)",suite:"H. Reporting",
+ services:["reporting"],impl:"pending",
+ implRefs:["libs/service-core/src/cache/cache-adapter.ts (the cache substrate)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/service-core/src/cache/cache-adapter.spec.ts"}],
+ howto:{kind:"none",cmd:"# The cache adapter is tested; the access-scope-in-cache-key report path is not yet wired.",note:""},
+ gap:"Scope-keyed report cache (accessScope in every cache key) is not implemented on the reporting read path; only the generic CacheAdapter exists."},
+
+/* ---- Suite I — Notification ---- */
+{id:"FLOW-080",title:"Idempotent notification delivery",suite:"I. Notification",
+ services:["notification","@aegis/events"],impl:"yes",
+ implRefs:["apps/notification/src/consumers/notification.consumer.ts (assertEnvelopeTenant + idempotent ledger)","apps/notification/src/services/email-sender.service.ts, sms-sender.service.ts (UNIQUE idempotency_key)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/notification/test/consumers/notification.consumer.spec.ts"},{tier:"int",path:"apps/notification/test/services/notification.service.spec.ts"},{tier:"int",path:"apps/notification/test/services/email-sender.service.spec.ts"},{tier:"int",path:"apps/notification/test/services/sms-sender.service.spec.ts"},{tier:"int",path:"apps/notification/test/integration/approval-eventing-contract.integration.spec.ts"},{tier:"int",path:"apps/e2e-tests/test/flow2-eventing-fanout.spec.ts"}],
+ howto:{kind:"jest",cmd:"npx nx test notification\nnpx nx test e2e-tests --testFile=flow2-eventing-fanout.spec.ts",note:"FLOWS_v2 Q-suite (FV2-170..178): recipient fan-out, per-channel prefs, templates, SMS parity, idempotent in-app+email+SMS ledger, anti-ambient-authority. Redelivery is a recorded no-op."}},
+
+{id:"FLOW-081",title:"In-app inbox scoping (own-only)",suite:"I. Notification",
+ services:["notification"],impl:"yes",
+ implRefs:["apps/notification/src/controllers/notification.controller.ts (GET /notification/v1/notifications, POST /:id/read)","RLS + caller-scoped query"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"apps/notification/test/validators/notification.validator.spec.ts"},{tier:"int",path:"apps/notification/test/services/notification.service.spec.ts"}],
+ howto:{kind:"curl",cmd:"curl -s 'localhost:4000/notification/v1/notifications' \\\n  -H \"authorization: Bearer $USER_A\" -H 'x-tenant-id: <T>'\ncurl -s -X POST localhost:4000/notification/v1/notifications/<ID>/read \\\n  -H \"authorization: Bearer $USER_A\" -H 'x-tenant-id: <T>'",note:"Runbook §4 asserts ≥1 in-app notification for the approver. Inbox is strictly per-user within tenant; cross-user item → 403/404."}},
+
+/* ---- Suite J — Service-to-service & integrity ---- */
+{id:"FLOW-090",title:"S2S call with strict header validation",suite:"J. Service-to-service & integrity",
+ services:["@aegis/service-core"],impl:"yes",
+ implRefs:["libs/service-core/src/middleware/ (context middleware: required-header assertion, fail-closed)","libs/service-core/src/auth/internal-auth.ts (signed internal JWT issuer/audience/exp)","libs/service-core/src/http/http-client.ts (propagates X-Correlation-Id unchanged)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/service-core/src/auth/internal-auth.spec.ts"},{tier:"int",path:"libs/service-core/src/http/http-client.spec.ts"},{tier:"int",path:"libs/service-core/src/middleware/error.middleware.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/auth.e2e.spec.ts (missing-tenant-header fail-closed assertion)"}],
+ howto:{kind:"curl",cmd:"# Missing required tenant header → context middleware fails closed (4xx, never 200):\ncurl -s -o /dev/null -w '%{http_code}\\n' localhost:4000/auth/login \\\n  -X POST -d '{\"email\":\"...\",\"password\":\"...\"}'",note:"Runbook §3 / auth.e2e.spec.ts — required headers asserted, never defaulted to UNKNOWN; no entryContext. Stale/forged internal JWT → 401 (internal-auth.spec.ts)."}},
+
+{id:"FLOW-091",title:"Token exchange / downscope for an internal hop",suite:"J. Service-to-service & integrity",
+ services:["gateway","@aegis/access-control"],impl:"pending",
+ implRefs:["libs/service-core/src/auth/internal-auth.ts (audience-bound internal JWT)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/service-core/src/auth/internal-auth.spec.ts"}],
+ howto:{kind:"none",cmd:"# Audience-bound internal JWTs are tested; full RFC-8693 token-exchange downscope is not a separate flow.",note:"Per-service aud check (wrong aud → 401) is covered by internal-auth.spec.ts."},
+ gap:"Explicit RFC-8693 token-exchange endpoint (downscope + re-audience at the gateway) is not on disk; the audience-binding half is covered."},
+
+{id:"FLOW-092",title:"Connector framework: pluggable mock ERP push",suite:"J. Service-to-service & integrity",
+ services:["@aegis/connectors","expense","invoice","payroll"],impl:"yes",
+ implRefs:["libs/connectors/src/registry.ts + connector.ts + base-connector.ts (common interface)","libs/connectors/src/mock/{ledger-one,finovo,acct-bridge}.ts","libs/connectors/src/config-store.ts (per-tenant binding), durable-sync.ts (idempotent log)"],
+ tested:"int",
+ testFiles:[{tier:"int",path:"libs/connectors/src/connectors.spec.ts"},{tier:"int",path:"libs/connectors/src/config-store.spec.ts"},{tier:"int",path:"libs/connectors/src/durable-sync.spec.ts"},{tier:"int",path:"apps/workflow/test/consumers/connector-sync.consumer.spec.ts"}],
+ howto:{kind:"jest",cmd:"npx nx test connectors\nnpx nx test workflow --testFile=connector-sync.consumer.spec.ts",note:"FLOWS_v2 R-suite (FV2-180..183): off-request-path push via consumer, idempotent redelivery no-op, retry→DLQ, audit outcome. Re-binding LedgerOne→Finovo needs zero code change (registry routes by binding)."}},
+
+{id:"FLOW-093",title:"Audit hash-chain verification (tamper-evident)",suite:"J. Service-to-service & integrity",
+ services:["@aegis/audit","cli"],impl:"yes",
+ implRefs:["libs/audit/src/hash.ts (H(prev_hash || canonical(entry)))","libs/audit/src/audit-logger.ts (append-only, captures actor/tenant/intent/decision/perms-at-time)","cli verifier task"],
+ tested:"live",
+ testFiles:[{tier:"int",path:"libs/audit/src/hash.spec.ts"},{tier:"int",path:"libs/audit/src/audit-logger.spec.ts"},{tier:"live",path:"apps/e2e-tests/live/audit-chain.e2e.spec.ts"}],
+ howto:{kind:"curl",cmd:"# Re-walk the chain over the live DB (needs a direct Postgres DSN):\nE2E_PG_URL=postgres://owner:...@localhost:5432/aegis \\\n  npx nx test e2e-tests --testFile=audit-chain.e2e.spec.ts\n# or the cli verifier task in Runbook §8 — expect bad_genesis=0, broken_links=0.",note:"Runbook §8 — VALID on the real chain; tamper a byte → BROKEN at the first altered entry. hash.spec.ts + audit-logger.spec.ts cover the unit math."}},
+];
+
+/* ===================== render ===================== */
+const $ = s => document.querySelector(s);
+const list = $('#list');
+const state = {q:"", svc:"", st:"all"};
+
+function implMeta(v){
+  if(v==="yes") return {cls:"impl-y",txt:"Implemented"};
+  if(v==="pending") return {cls:"impl-p",txt:"Partial"};
+  return {cls:"impl-n",txt:"Not built"};
+}
+function testMeta(v){
+  if(v==="live") return {cls:"t-live",txt:"Live E2E"};
+  if(v==="int") return {cls:"t-int",txt:"Integration"};
+  return {cls:"t-none",txt:"No test"};
+}
+
+/* summary */
+function renderCards(){
+  const total = FLOWS.length;
+  const impl = FLOWS.filter(f=>f.impl==="yes").length;
+  const partial = FLOWS.filter(f=>f.impl==="pending").length;
+  const notBuilt = FLOWS.filter(f=>f.impl==="no").length;
+  const live = FLOWS.filter(f=>f.tested==="live").length;
+  const intg = FLOWS.filter(f=>f.tested==="int").length;
+  const untested = FLOWS.filter(f=>f.tested==="none").length;
+  const pct = n => Math.round(n/total*100);
+  const cards = [
+    {n:total,l:"Flows catalogued",bar:null},
+    {n:impl,l:"Implemented",bar:[pct(impl),"var(--green)"]},
+    {n:partial,l:"Partial / scoped-down",bar:[pct(partial),"var(--amber)"]},
+    {n:notBuilt,l:"Not built",bar:[pct(notBuilt),"var(--red)"]},
+    {n:live,l:"Live E2E coverage",bar:[pct(live),"var(--green)"]},
+    {n:intg,l:"Integration-tested",bar:[pct(intg),"var(--blue)"]},
+    {n:untested,l:"No automated test",bar:[pct(untested),"var(--dim)"]},
+  ];
+  $('#cards').innerHTML = cards.map(c=>`
+    <div class="card">
+      <div class="n">${c.n}</div>
+      <div class="l">${c.l}</div>
+      ${c.bar?`<div class="bar"><i style="width:${c.bar[0]}%;background:${c.bar[1]}"></i></div>`:`<div class="bar"><i style="width:100%;background:var(--line)"></i></div>`}
+    </div>`).join("");
+}
+
+/* service filter options */
+function renderSvcOptions(){
+  const set = new Set();
+  FLOWS.forEach(f=>f.services.forEach(s=>set.add(s)));
+  const opts = [...set].sort();
+  $('#svcSel').innerHTML = '<option value="">All services</option>' +
+    opts.map(s=>`<option value="${s}">${s}</option>`).join("");
+}
+
+function matches(f){
+  if(state.svc && !f.services.includes(state.svc)) return false;
+  if(state.st!=="all"){
+    if(state.st==="live" && f.tested!=="live") return false;
+    if(state.st==="int" && f.tested!=="int") return false;
+    if(state.st==="none" && f.tested!=="none") return false;
+    if(state.st==="pending" && f.impl!=="pending") return false;
+  }
+  if(state.q){
+    const hay = [f.id,f.title,f.suite,f.services.join(" "),
+      (f.implRefs||[]).join(" "),(f.testFiles||[]).map(t=>t.path).join(" "),
+      f.howto?.cmd||"",f.howto?.note||"",f.gap||""].join(" ").toLowerCase();
+    if(!hay.includes(state.q.toLowerCase())) return false;
+  }
+  return true;
+}
+
+function fileLines(f){
+  const refs = (f.implRefs||[]).map(r=>`<li><span class="fk">impl</span><span class="mono">${esc(r)}</span></li>`).join("");
+  const tests = (f.testFiles||[]).map(t=>`<li><span class="fk">${t.tier}</span><span class="mono">${esc(t.path)}</span></li>`).join("");
+  return refs+tests;
+}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+function render(){
+  const visible = FLOWS.filter(matches);
+  // group by suite, preserving FLOWS order
+  const groups = [];
+  const seen = new Map();
+  visible.forEach(f=>{
+    if(!seen.has(f.suite)){seen.set(f.suite,[]);groups.push(f.suite);}
+    seen.get(f.suite).push(f);
+  });
+  list.innerHTML = groups.map(suite=>{
+    const rows = seen.get(suite).map(f=>{
+      const im = implMeta(f.impl), tm = testMeta(f.tested);
+      const how = f.howto||{};
+      const cmdBlock = how.cmd ? `<div class="howto"><div class="step">${esc(how.cmd)}</div>${how.note?`<div class="note">${esc(how.note)}</div>`:""}</div>` : "";
+      const gapBlock = f.gap ? `<div class="gap"><b>Gap:</b><span>${esc(f.gap)}</span></div>` : "";
+      return `<div class="flow" data-id="${f.id}">
+        <div class="row" onclick="this.parentNode.classList.toggle('open')">
+          <span class="caret">▶</span>
+          <span class="fid">${f.id}</span>
+          <span class="fname">${esc(f.title)}</span>
+          <span class="badges">
+            <span class="b ${im.cls}">${im.txt}</span>
+            <span class="b ${tm.cls}">${tm.txt}</span>
+          </span>
+        </div>
+        <div class="detail">
+          <div class="seg"><div class="lbl">Services spanned</div>
+            <div class="svcs">${f.services.map(s=>`<span class="svc">${esc(s)}</span>`).join("")}</div></div>
+          <div class="seg"><div class="lbl">Code &amp; test references</div>
+            <ul class="files">${fileLines(f)}</ul></div>
+          <div class="seg"><div class="lbl">How you test it</div>${cmdBlock||'<div class="val" style="color:var(--dim)">No runnable test yet.</div>'}</div>
+          ${gapBlock?`<div class="seg">${gapBlock}</div>`:""}
+        </div>
+      </div>`;
+    }).join("");
+    return `<div class="suite-h">${esc(suite)}</div>${rows}`;
+  }).join("") || `<div style="color:var(--dim);padding:30px;text-align:center">No flows match the current filters.</div>`;
+  $('#count').textContent = `${visible.length} of ${FLOWS.length} flows`;
+}
+
+/* events */
+$('#q').addEventListener('input',e=>{state.q=e.target.value;render();});
+$('#svcSel').addEventListener('change',e=>{state.svc=e.target.value;render();});
+$('#statusChips').addEventListener('click',e=>{
+  const c=e.target.closest('.chip'); if(!c)return;
+  [...document.querySelectorAll('#statusChips .chip')].forEach(x=>x.classList.remove('on'));
+  c.classList.add('on'); state.st=c.dataset.st; render();
+});
+$('#reset').addEventListener('click',()=>{
+  state.q="";state.svc="";state.st="all";
+  $('#q').value="";$('#svcSel').value="";
+  [...document.querySelectorAll('#statusChips .chip')].forEach(x=>x.classList.toggle('on',x.dataset.st==="all"));
+  render();
+});
+
+renderCards();renderSvcOptions();render();
+</script>
+</body>
+</html>

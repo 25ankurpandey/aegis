@@ -1,0 +1,70 @@
+# Aegis CI/CD — DRY pipeline (YAML anchors), build-once SHA image + tag-promotion.
+# Secrets (registry creds, AWS/OIDC, param-store access) come from CI variables, never committed.
+
+stages:
+  - verify
+  - build
+  - deploy
+
+variables:
+  IMAGE_NAME: aegis
+  DOCKER_REGISTRY: $CI_REGISTRY_IMAGE
+
+# ---------- reusable script blocks ----------
+.verify: &verify
+  stage: verify
+  image: node:22-alpine
+  script:
+    - npm ci
+    - npx nx affected -t lint --base=$CI_DEFAULT_BRANCH
+    - npx nx affected -t test --base=$CI_DEFAULT_BRANCH
+
+.build_image: &build_image
+  stage: build
+  image: docker:26
+  services: ["docker:26-dind"]
+  script:
+    - docker build -t $DOCKER_REGISTRY:$CI_COMMIT_SHA --build-arg GIT_SHA=$CI_COMMIT_SHA .
+    - docker push $DOCKER_REGISTRY:$CI_COMMIT_SHA
+
+# Promote (re-tag) the already-built immutable SHA image — no rebuild — then roll services.
+.deploy: &deploy
+  stage: deploy
+  image: alpine:3.20
+  script:
+    - apk add --no-cache aws-cli jq
+    # promote: add the env moving tag to the same SHA manifest
+    - aws ecr batch-get-image --repository-name $IMAGE_NAME --image-ids imageTag=$CI_COMMIT_SHA --query 'images[0].imageManifest' --output text > /tmp/manifest
+    - aws ecr put-image --repository-name $IMAGE_NAME --image-tag $ENV_TAG --image-manifest "$(cat /tmp/manifest)" || true
+    # run migrations as a one-shot task, then roll each service
+    - ./scripts/ci/run-migration-task.sh "$ECS_CLUSTER" "$CI_COMMIT_SHA"
+    - for svc in user-management expense payroll reporting workflow notification invoice gateway; do
+        aws ecs update-service --cluster "$ECS_CLUSTER" --service "$svc" --force-new-deployment;
+      done
+
+verify:
+  <<: *verify
+
+build:
+  <<: *build_image
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "release" || $CI_COMMIT_BRANCH == "main"'
+
+deploy:dev:
+  <<: *deploy
+  variables: { ENV_TAG: "dev", ECS_CLUSTER: "aegis-dev", AEGIS_ENV: "dev" }
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+deploy:staging:
+  <<: *deploy
+  variables: { ENV_TAG: "staging", ECS_CLUSTER: "aegis-staging", AEGIS_ENV: "staging" }
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "release"'
+
+deploy:production:
+  <<: *deploy
+  variables: { ENV_TAG: "production", ECS_CLUSTER: "aegis-prod", AEGIS_ENV: "production" }
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual

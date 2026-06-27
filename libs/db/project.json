@@ -1,0 +1,21 @@
+{
+  "name": "db",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/db/src",
+  "projectType": "library",
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "libs/db/jest.config.ts"
+      }
+    }
+  },
+  "tags": [
+    "scope:shared",
+    "type:db"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "expense",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/expense/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "target": "node",
+        "compiler": "tsc",
+        "outputPath": "dist/apps/expense",
+        "main": "apps/expense/src/index.ts",
+        "tsConfig": "apps/expense/tsconfig.app.json",
+        "webpackConfig": "apps/expense/webpack.config.js"
+      },
+      "configurations": {
+        "production": { "optimization": false, "outputHashing": "none" }
+      }
+    },
+    "serve": {
+      "executor": "@nx/js:node",
+      "options": { "buildTarget": "expense:build" }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": { "jestConfig": "apps/expense/jest.config.ts" }
+    },
+    "lint": { "executor": "@nx/eslint:lint" }
+  },
+  "tags": ["scope:app", "service:expense"]
+}

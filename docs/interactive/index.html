@@ -1,0 +1,1288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aegis — Access Control for Multi-Tenant Microservices</title>
+<style>
+  :root {
+    /* Color system */
+    --bg:            #0b0e14;
+    --bg-elev:       #11151f;
+    --bg-elev-2:     #161b27;
+    --bg-inset:      #0d1018;
+    --border:        #232a3a;
+    --border-soft:   #1b212e;
+    --text:          #d7deea;
+    --text-dim:      #97a1b3;
+    --text-faint:    #6b7488;
+    --accent:        #5b8cff;
+    --accent-2:      #38bd9a;
+    --accent-soft:   rgba(91,140,255,0.14);
+    --allow:         #36c281;
+    --allow-bg:      rgba(54,194,129,0.12);
+    --deny:          #ef5a6f;
+    --deny-bg:       rgba(239,90,111,0.12);
+    --warn:          #e7b450;
+    --tenant-a:      #5b8cff;
+    --tenant-b:      #c084fc;
+    --shadow:        0 8px 30px rgba(0,0,0,0.45);
+    --radius:        12px;
+    --radius-sm:     8px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 800px at 80% -10%, #141a28 0%, var(--bg) 55%) fixed;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, .mono { font-family: var(--mono); }
+  h1, h2, h3 { line-height: 1.25; color: #eef2f8; font-weight: 650; }
+  h2 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h3 { font-size: 17px; margin: 28px 0 10px; }
+  p { color: var(--text-dim); }
+
+  /* ---------- Layout ---------- */
+  .app { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 268px;
+    flex: 0 0 268px;
+    background: linear-gradient(180deg, var(--bg-elev) 0%, #0c1019 100%);
+    border-right: 1px solid var(--border);
+    position: fixed;
+    top: 0; bottom: 0; left: 0;
+    padding: 22px 16px 24px;
+    overflow-y: auto;
+    z-index: 30;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 18px; }
+  .brand .logo { flex: 0 0 auto; }
+  .brand .name { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: 0.2px; }
+  .brand .tag { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav button {
+    all: unset;
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .nav button:hover { background: var(--bg-elev-2); color: var(--text); }
+  .nav button.active { background: var(--accent-soft); color: #fff; }
+  .nav button.active .num { background: var(--accent); color: #08111f; border-color: transparent; }
+  .nav .num {
+    flex: 0 0 22px; height: 22px; width: 22px;
+    display: grid; place-items: center;
+    font-size: 11px; font-family: var(--mono);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text-faint);
+  }
+  .nav-foot {
+    margin-top: 20px; padding: 14px 12px 0;
+    border-top: 1px solid var(--border-soft);
+    font-size: 11.5px; color: var(--text-faint);
+  }
+  .nav-foot a { color: var(--text-dim); }
+
+  .main { margin-left: 268px; flex: 1 1 auto; min-width: 0; }
+  .content { max-width: 1060px; margin: 0 auto; padding: 40px 48px 96px; }
+
+  section.view { display: none; animation: fade 0.25s ease; }
+  section.view.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 8px; }
+  .lede { font-size: 16px; color: var(--text-dim); max-width: 720px; }
+
+  /* ---------- Reusable bits ---------- */
+  .panel {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+  }
+  .grid { display: grid; gap: 14px; }
+  .grid.cards { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); margin-top: 22px; }
+
+  .card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 16px 15px;
+    cursor: pointer;
+    transition: border-color 0.14s, transform 0.14s, background 0.14s;
+    position: relative;
+  }
+  .card:hover { border-color: #33405c; transform: translateY(-2px); }
+  .card.open { border-color: var(--accent); background: var(--bg-elev-2); }
+  .card .ct { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card .title { font-weight: 650; color: #eef2f8; font-size: 15px; }
+  .card .chip { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+  .card .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; }
+  .card .detail { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 13px; color: var(--text-dim); }
+  .card.open .detail { display: block; }
+  .card .detail b { color: var(--text); font-weight: 600; }
+  .card .detail .lbl { color: var(--accent-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; display: block; margin: 9px 0 3px; }
+  .card .perms { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .pill { font-family: var(--mono); font-size: 11px; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; color: var(--text); }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-family: var(--mono); padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+  .badge.allow { color: var(--allow); border-color: rgba(54,194,129,0.4); background: var(--allow-bg); }
+  .badge.deny { color: var(--deny); border-color: rgba(239,90,111,0.4); background: var(--deny-bg); }
+
+  .note { font-size: 13px; color: var(--text-faint); }
+  .kbd { font-family: var(--mono); font-size: 12px; background: var(--bg-inset); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--text); }
+
+  pre.code {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #cdd6e6;
+    margin: 12px 0;
+  }
+  pre.code .k { color: #7aa2ff; }
+  pre.code .s { color: #7bd88f; }
+  pre.code .c { color: var(--text-faint); font-style: italic; }
+  pre.code .n { color: #e7b450; }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 14px; }
+  table.tbl th, table.tbl td { border: 1px solid var(--border); padding: 8px 11px; text-align: left; }
+  table.tbl th { background: var(--bg-elev-2); color: var(--text); font-weight: 600; }
+  table.tbl td { color: var(--text-dim); }
+  table.tbl tr:nth-child(even) td { background: rgba(255,255,255,0.012); }
+
+  .matrix td.y { color: var(--allow); font-weight: 700; text-align: center; }
+  .matrix td.n { color: var(--text-faint); text-align: center; }
+  .matrix td.mono { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .matrix th.rot { font-size: 11.5px; font-weight: 600; }
+
+  /* Controls */
+  .controls { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+  .field label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); font-weight: 600; }
+  select, .btn {
+    font-family: var(--sans); font-size: 14px;
+    background: var(--bg-elev-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    cursor: pointer;
+  }
+  select:focus, .btn:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #07101f; border-color: transparent; font-weight: 650; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:hover { border-color: #3a486a; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn-row { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+
+  .toggle-row { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .toggle-row button { all: unset; padding: 7px 16px; cursor: pointer; font-size: 13px; color: var(--text-dim); }
+  .toggle-row button.on { color: #07101f; font-weight: 650; }
+  .toggle-row button.on.ta { background: var(--tenant-a); }
+  .toggle-row button.on.tb { background: var(--tenant-b); }
+
+  /* Decision output */
+  .verdict { margin-top: 18px; border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
+  .verdict .head { padding: 16px 20px; display: flex; align-items: center; gap: 14px; }
+  .verdict.allow .head { background: var(--allow-bg); border-bottom: 1px solid rgba(54,194,129,0.3); }
+  .verdict.deny  .head { background: var(--deny-bg);  border-bottom: 1px solid rgba(239,90,111,0.3); }
+  .verdict .glyph { font-size: 22px; line-height: 1; }
+  .verdict .vtitle { font-size: 18px; font-weight: 700; }
+  .verdict.allow .vtitle { color: var(--allow); }
+  .verdict.deny  .vtitle { color: var(--deny); }
+  .verdict .body { padding: 16px 20px; background: var(--bg-elev); }
+  .verdict ol { margin: 0; padding-left: 20px; }
+  .verdict li { margin: 5px 0; font-size: 13.5px; color: var(--text-dim); }
+  .verdict li .ok { color: var(--allow); }
+  .verdict li .x { color: var(--deny); }
+  .verdict li .obl { color: var(--warn); }
+
+  /* RLS rows */
+  .db-table { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-top: 14px; }
+  .db-row { display: grid; grid-template-columns: 90px 1fr 1.3fr 120px; gap: 0; font-family: var(--mono); font-size: 12.5px; border-bottom: 1px solid var(--border-soft); }
+  .db-row:last-child { border-bottom: 0; }
+  .db-row > div { padding: 9px 12px; border-right: 1px solid var(--border-soft); }
+  .db-row > div:last-child { border-right: 0; }
+  .db-row.head { background: var(--bg-elev-2); color: var(--text); font-weight: 600; }
+  .db-row .tg { font-weight: 700; }
+  .db-row.t-a .tg { color: var(--tenant-a); }
+  .db-row.t-b .tg { color: var(--tenant-b); }
+  .db-row.filtered { display: none; }
+  .db-row.dim { opacity: 0.18; filter: grayscale(0.6); }
+
+  /* Lifecycle stepper */
+  .stepper { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+  .step-dot { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-faint); cursor: pointer; transition: all 0.12s; }
+  .step-dot .i { font-family: var(--mono); font-size: 11px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--border); }
+  .step-dot.active { border-color: var(--accent); color: #fff; background: var(--accent-soft); }
+  .step-dot.active .i { background: var(--accent); color: #07101f; border-color: transparent; }
+  .step-dot.done { color: var(--accent-2); border-color: rgba(56,189,154,0.4); }
+  .step-card { margin-top: 6px; min-height: 200px; }
+  .step-card .where { font-family: var(--mono); font-size: 12px; color: var(--accent-2); }
+  .step-card h3 { margin-top: 6px; }
+  .step-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+  .step-count { font-size: 13px; color: var(--text-faint); }
+
+  /* Connector flow */
+  .conn-pick { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+  .conn-pick .opt { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; cursor: pointer; min-width: 150px; transition: all 0.12s; }
+  .conn-pick .opt:hover { border-color: #3a486a; }
+  .conn-pick .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .conn-pick .opt .cn { font-weight: 650; color: #eef2f8; }
+  .conn-pick .opt .cd { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+  .flow-log { margin-top: 16px; }
+  .flow-step { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px dashed var(--border-soft); opacity: 0; transform: translateX(-6px); }
+  .flow-step.show { opacity: 1; transform: none; transition: all 0.3s; }
+  .flow-step .fi { flex: 0 0 26px; height: 26px; width: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--bg-elev-2); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .flow-step .ft { font-size: 13.5px; }
+  .flow-step .ft b { color: var(--text); }
+  .flow-step .ft .meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+  .flow-step.idem .fi { color: var(--warn); border-color: rgba(231,180,80,0.4); }
+
+  /* Deployment promo */
+  .promo { display: flex; align-items: stretch; gap: 0; margin-top: 18px; flex-wrap: wrap; }
+  .promo .env { flex: 1 1 0; min-width: 150px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; background: var(--bg-elev); text-align: center; }
+  .promo .env .e { font-weight: 650; color: #eef2f8; }
+  .promo .env .sha { font-family: var(--mono); font-size: 12px; color: var(--accent-2); margin-top: 6px; }
+  .promo .env .meta { font-size: 11.5px; color: var(--text-faint); margin-top: 5px; }
+  .promo .arrow { flex: 0 0 44px; display: grid; place-items: center; color: var(--text-faint); font-size: 20px; }
+
+  .proc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+  .proc { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px 15px; background: var(--bg-elev); }
+  .proc .pt { font-family: var(--mono); color: var(--accent); font-size: 13px; }
+  .proc .pd { font-size: 12.5px; color: var(--text-dim); margin-top: 5px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12.5px; color: var(--text-dim); }
+  .legend .lk { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); }
+
+  .svg-wrap { margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-inset); padding: 8px; overflow-x: auto; }
+  svg text { font-family: var(--sans); }
+
+  .crosslinks { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
+  .crosslinks .cl-h { width: 100%; color: var(--text-faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 12px 16px; margin: 16px 0; font-size: 13.5px; color: var(--text-dim); }
+  .callout.warn { border-left-color: var(--warn); background: rgba(231,180,80,0.08); }
+  .callout b { color: var(--text); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 920px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.2s; }
+    .sidebar.open { transform: none; }
+    .main { margin-left: 0; }
+    .content { padding: 70px 20px 80px; }
+    .two-col { grid-template-columns: 1fr; }
+    .proc-grid { grid-template-columns: 1fr; }
+    .menu-btn { display: grid !important; }
+    .db-row { grid-template-columns: 70px 1fr 1fr 90px; }
+  }
+  .menu-btn { display: none; position: fixed; top: 14px; left: 14px; z-index: 40; width: 42px; height: 42px; place-items: center; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+  .menu-btn span, .menu-btn span::before, .menu-btn span::after { content: ""; display: block; width: 18px; height: 2px; background: var(--text); position: relative; }
+  .menu-btn span::before { position: absolute; top: -6px; } .menu-btn span::after { position: absolute; top: 6px; }
+</style>
+</head>
+<body>
+
+<button class="menu-btn" id="menuBtn" aria-label="Toggle navigation"><span></span></button>
+
+<div class="app">
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <svg class="logo" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <defs>
+          <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#38bd9a"/>
+          </linearGradient>
+        </defs>
+        <path d="M17 2 L29 6 V16 C29 24 23 29 17 32 C11 29 5 24 5 16 V6 Z" fill="url(#shield)" opacity="0.18" stroke="url(#shield)" stroke-width="1.5"/>
+        <path d="M11.5 16.5 L15.5 20.5 L23 12.5" fill="none" stroke="url(#shield)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <div class="name">Aegis</div>
+        <div class="tag">Access Control Platform</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button data-view="overview" class="active"><span class="num">1</span> Overview</button>
+      <button data-view="architecture"><span class="num">2</span> Architecture</button>
+      <button data-view="access"><span class="num">3</span> Access Control</button>
+      <button data-view="tenancy"><span class="num">4</span> Multi-Tenancy</button>
+      <button data-view="lifecycle"><span class="num">5</span> Request Lifecycle</button>
+      <button data-view="connectors"><span class="num">6</span> ERP Connectors</button>
+      <button data-view="deploy"><span class="num">7</span> Deployment</button>
+    </nav>
+
+    <div class="nav-foot">
+      Companion to the written design docs.<br/>
+      <a href="../README.md">docs/README.md</a> · <a href="../../SPEC.md">SPEC.md</a>
+      <br/><br/>PostgreSQL + RLS · InversifyJS · PDP / PEP / PAP / PIP
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <div class="content">
+
+      <!-- ============ 1. OVERVIEW ============ -->
+      <section class="view active" id="view-overview">
+        <div class="eyebrow">The Platform</div>
+        <h2>Aegis — Access Control for Multi-Tenant Microservices</h2>
+        <p class="lede">
+          Aegis is an enterprise-grade access-control system for a multi-tenant, microservices-based SaaS platform:
+          centralized authorization (RBAC + ABAC via an explicit <b>PDP / PEP</b> split), database-enforced tenant
+          isolation with PostgreSQL <b>Row-Level Security</b>, secure service-to-service communication, dynamic
+          role/permission management, and tamper-evident auditing — applied uniformly across seven business services.
+        </p>
+
+        <div class="grid" style="grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:20px">
+          <div class="panel" style="padding:15px 17px">
+            <div class="eyebrow" style="margin-bottom:4px">Authorization</div>
+            <p style="margin:0;font-size:13.5px">One shared <code>@aegis/access-control</code> library. Every route is
+            <code>authenticate → authorize(permission) → handler</code>. Decisions are pure, cacheable, and fail-closed.</p>
+          </div>
+          <div class="panel" style="padding:15px 17px">
+            <div class="eyebrow" style="margin-bottom:4px">Isolation</div>
+            <p style="margin:0;font-size:13.5px">Shared schema + <code>tenant_id</code> on every row + Postgres RLS
+            (<code>FORCE ROW LEVEL SECURITY</code>, restrictive policy, app runs as a non-owner). Belt-and-suspenders.</p>
+          </div>
+          <div class="panel" style="padding:15px 17px">
+            <div class="eyebrow" style="margin-bottom:4px">Trust</div>
+            <p style="margin:0;font-size:13.5px">Edge JWT validation at the gateway, re-validated per service via JWKS;
+            signed internal JWTs + context propagation; hash-chained audit on every write.</p>
+          </div>
+        </div>
+
+        <h3>The seven services + gateway</h3>
+        <p style="margin-top:2px">Click any card to reveal its responsibility and its access-control specifics.</p>
+        <div class="grid cards" id="serviceCards"></div>
+
+        <div class="callout" style="margin-top:24px">
+          <b>Shared substrate.</b> All eight apps sit on the same libraries —
+          <code>@aegis/service-core</code> (request context, logger, HTTP client, middleware),
+          <code>@aegis/access-control</code> (the PDP + PEP guards),
+          <code>@aegis/connectors</code> (pluggable ERP framework),
+          <code>@aegis/db</code> (Sequelize + RLS helpers),
+          <code>@aegis/events</code> (the bus), plus <code>@aegis/shared-enums</code> /
+          <code>shared-types</code> / <code>shared-constants</code>. A new service inherits the whole security posture for free.
+        </div>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../README.md">docs index</a>
+          <a href="../03-access-control-model.md">03 · Access-control model</a>
+          <a href="../04-multi-tenancy.md">04 · Multi-tenancy</a>
+          <a href="../services/">per-service docs</a>
+        </div>
+      </section>
+
+      <!-- ============ 2. ARCHITECTURE ============ -->
+      <section class="view" id="view-architecture">
+        <div class="eyebrow">System Topology</div>
+        <h2>Architecture</h2>
+        <p class="lede">A single edge gateway routes to seven business services. Each service is the same shape
+          (Express + InversifyJS), and each leans on the shared libraries below it. The data plane is PostgreSQL
+          with RLS, Redis for cache/queues, and an abstracted event bus.</p>
+
+        <div class="svg-wrap">
+          <svg viewBox="0 0 980 620" width="100%" role="img" aria-label="Aegis architecture diagram">
+            <defs>
+              <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                <path d="M0 0 L9 4.5 L0 9 z" fill="#3a486a"/>
+              </marker>
+              <linearGradient id="gw" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#38bd9a"/>
+              </linearGradient>
+            </defs>
+
+            <!-- client -->
+            <rect x="400" y="14" width="180" height="40" rx="9" fill="#161b27" stroke="#232a3a"/>
+            <text x="490" y="39" fill="#d7deea" font-size="13" text-anchor="middle">Client / API consumer</text>
+            <line x1="490" y1="54" x2="490" y2="74" stroke="#3a486a" stroke-width="1.6" marker-end="url(#arr)"/>
+
+            <!-- gateway -->
+            <rect x="330" y="76" width="320" height="46" rx="10" fill="#11151f" stroke="url(#gw)" stroke-width="1.8"/>
+            <text x="490" y="98" fill="#eef2f8" font-size="14" font-weight="600" text-anchor="middle">gateway</text>
+            <text x="490" y="114" fill="#97a1b3" font-size="11" text-anchor="middle">edge JWT validation · routing · rate limit · token exchange · mints X-Correlation-Id</text>
+
+            <!-- services row -->
+            <g font-size="11.5" text-anchor="middle">
+              <!-- y=150..190 -->
+              <g>
+                <rect x="20"  y="150" width="128" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="84"  y="170" fill="#eef2f8" font-weight="600">user-management</text>
+                <text x="84"  y="185" fill="#97a1b3">identity · PAP</text>
+              </g>
+              <g>
+                <rect x="158" y="150" width="116" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="216" y="170" fill="#eef2f8" font-weight="600">expense</text>
+                <text x="216" y="185" fill="#97a1b3">reports · approvals</text>
+              </g>
+              <g>
+                <rect x="284" y="150" width="116" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="342" y="170" fill="#eef2f8" font-weight="600">payroll</text>
+                <text x="342" y="185" fill="#97a1b3">PII · maker-checker</text>
+              </g>
+              <g>
+                <rect x="410" y="150" width="116" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="468" y="170" fill="#eef2f8" font-weight="600">invoice</text>
+                <text x="468" y="185" fill="#97a1b3">header-level</text>
+              </g>
+              <g>
+                <rect x="536" y="150" width="116" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="594" y="170" fill="#eef2f8" font-weight="600">reporting</text>
+                <text x="594" y="185" fill="#97a1b3">CQRS-lite read</text>
+              </g>
+              <g>
+                <rect x="662" y="150" width="116" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="720" y="170" fill="#eef2f8" font-weight="600">workflow</text>
+                <text x="720" y="185" fill="#97a1b3">rules-as-data</text>
+              </g>
+              <g>
+                <rect x="788" y="150" width="172" height="44" rx="8" fill="#161b27" stroke="#2c3650"/>
+                <text x="874" y="170" fill="#eef2f8" font-weight="600">notification</text>
+                <text x="874" y="185" fill="#97a1b3">in-app + email · idempotent</text>
+              </g>
+            </g>
+
+            <!-- gateway to services fan -->
+            <g stroke="#2c3650" stroke-width="1.3" fill="none">
+              <path d="M420 122 C 300 132, 150 138, 84 150" marker-end="url(#arr)"/>
+              <path d="M455 122 C 380 134, 250 140, 216 150" marker-end="url(#arr)"/>
+              <path d="M478 122 C 430 134, 360 142, 342 150" marker-end="url(#arr)"/>
+              <path d="M490 124 L 468 150" marker-end="url(#arr)"/>
+              <path d="M505 122 C 545 134, 580 142, 594 150" marker-end="url(#arr)"/>
+              <path d="M530 122 C 620 134, 690 142, 720 150" marker-end="url(#arr)"/>
+              <path d="M560 122 C 700 132, 820 140, 874 150" marker-end="url(#arr)"/>
+            </g>
+
+            <!-- shared libs band -->
+            <rect x="20" y="232" width="940" height="118" rx="12" fill="#0d1018" stroke="#232a3a"/>
+            <text x="38" y="254" fill="#6b7488" font-size="11" letter-spacing="1">SHARED LIBRARIES · imported by every service</text>
+            <g font-size="12" text-anchor="middle">
+              <g>
+                <rect x="38"  y="266" width="168" height="66" rx="9" fill="#11151f" stroke="#38bd9a" stroke-opacity="0.5"/>
+                <text x="122" y="290" fill="#eef2f8" font-weight="600">@aegis/access-control</text>
+                <text x="122" y="307" fill="#97a1b3" font-size="11">PDP: RBAC + ABAC</text>
+                <text x="122" y="322" fill="#97a1b3" font-size="11">PEP: authorize() guards</text>
+              </g>
+              <g>
+                <rect x="222" y="266" width="150" height="66" rx="9" fill="#11151f" stroke="#2c3650"/>
+                <text x="297" y="290" fill="#eef2f8" font-weight="600">@aegis/service-core</text>
+                <text x="297" y="307" fill="#97a1b3" font-size="11">context · logger · http</text>
+                <text x="297" y="322" fill="#97a1b3" font-size="11">middleware · secrets</text>
+              </g>
+              <g>
+                <rect x="388" y="266" width="146" height="66" rx="9" fill="#11151f" stroke="#2c3650"/>
+                <text x="461" y="290" fill="#eef2f8" font-weight="600">@aegis/db</text>
+                <text x="461" y="307" fill="#97a1b3" font-size="11">Sequelize · RLS helper</text>
+                <text x="461" y="322" fill="#97a1b3" font-size="11">SET LOCAL · migrations</text>
+              </g>
+              <g>
+                <rect x="550" y="266" width="146" height="66" rx="9" fill="#11151f" stroke="#2c3650"/>
+                <text x="623" y="290" fill="#eef2f8" font-weight="600">@aegis/events</text>
+                <text x="623" y="307" fill="#97a1b3" font-size="11">publish/consume</text>
+                <text x="623" y="322" fill="#97a1b3" font-size="11">topic enum · outbox</text>
+              </g>
+              <g>
+                <rect x="712" y="266" width="230" height="66" rx="9" fill="#11151f" stroke="#2c3650"/>
+                <text x="827" y="290" fill="#eef2f8" font-weight="600">@aegis/connectors</text>
+                <text x="827" y="307" fill="#97a1b3" font-size="11">pluggable ERP framework</text>
+                <text x="827" y="322" fill="#97a1b3" font-size="11">adapter registry · mock connectors</text>
+              </g>
+            </g>
+
+            <!-- service to libs (representative ties) -->
+            <g stroke="#1b212e" stroke-width="1.1" fill="none" stroke-dasharray="3 3">
+              <path d="M84 194 C 90 220, 110 240, 122 266"/>
+              <path d="M342 194 C 320 224, 305 244, 297 266"/>
+              <path d="M468 194 L 461 266"/>
+              <path d="M720 194 C 680 224, 640 244, 623 266"/>
+              <path d="M874 194 C 870 224, 845 244, 827 266"/>
+            </g>
+
+            <!-- data plane -->
+            <g font-size="12" text-anchor="middle">
+              <line x1="461" y1="350" x2="461" y2="392" stroke="#3a486a" stroke-width="1.4" marker-end="url(#arr)"/>
+              <g>
+                <rect x="120" y="396" width="290" height="74" rx="11" fill="#11151f" stroke="#5b8cff" stroke-opacity="0.55"/>
+                <text x="265" y="422" fill="#eef2f8" font-weight="600" font-size="14">PostgreSQL 15+</text>
+                <text x="265" y="441" fill="#97a1b3">tenant_id on every row · Row-Level Security</text>
+                <text x="265" y="458" fill="#97a1b3" font-size="11">FORCE RLS · RESTRICTIVE policy · non-owner app role</text>
+              </g>
+              <g>
+                <rect x="430" y="396" width="200" height="74" rx="11" fill="#11151f" stroke="#2c3650"/>
+                <text x="530" y="422" fill="#eef2f8" font-weight="600" font-size="14">Redis</text>
+                <text x="530" y="441" fill="#97a1b3">decision cache (PEP)</text>
+                <text x="530" y="458" fill="#97a1b3" font-size="11">BullMQ jobs · sessions</text>
+              </g>
+              <g>
+                <rect x="650" y="396" width="210" height="74" rx="11" fill="#11151f" stroke="#2c3650"/>
+                <text x="755" y="422" fill="#eef2f8" font-weight="600" font-size="14">Event bus</text>
+                <text x="755" y="441" fill="#97a1b3">Redis streams / SQS / Kafka</text>
+                <text x="755" y="458" fill="#97a1b3" font-size="11">transport-swappable</text>
+              </g>
+              <line x1="623" y1="332" x2="700" y2="396" stroke="#3a486a" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+            </g>
+
+            <!-- audit footnote -->
+            <rect x="120" y="500" width="740" height="40" rx="9" fill="#0d1018" stroke="#232a3a"/>
+            <text x="490" y="525" fill="#97a1b3" font-size="12" text-anchor="middle">
+              Every write emits a hash-chained, tenant-scoped audit entry → append-only activity feed + per-domain audit tables
+            </text>
+          </svg>
+        </div>
+
+        <div class="legend">
+          <span class="lk"><span class="sw" style="background:#11151f;border-color:#38bd9a"></span> access-control substrate</span>
+          <span class="lk"><span class="sw" style="background:#161b27;border-color:#2c3650"></span> business service</span>
+          <span class="lk"><span class="sw" style="background:#11151f;border-color:#5b8cff"></span> data plane (RLS)</span>
+          <span class="lk"><span class="sw" style="background:#0d1018;border-color:#232a3a"></span> shared lib band</span>
+          <span class="lk"><span style="width:18px;border-top:1.5px dashed #2c3650;display:inline-block"></span> imports / depends-on</span>
+        </div>
+
+        <div class="callout">
+          <b>One image, many roles.</b> All eight apps build from a single multi-stage <code>Dockerfile</code>.
+          <code>scripts/start.sh</code> switches on <code>PROCESS_TYPE</code> → <code>api</code> (the selected
+          <code>SERVICE_NAME</code>), <code>worker</code>, or <code>migration</code> — see the Deployment section.
+        </div>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../01-architecture.md">01 · Architecture</a>
+          <a href="../02-patterns.md">02 · Patterns</a>
+          <a href="../06-service-to-service.md">06 · Service-to-service</a>
+        </div>
+      </section>
+
+      <!-- ============ 3. ACCESS CONTROL ============ -->
+      <section class="view" id="view-access">
+        <div class="eyebrow">PDP / PEP · RBAC + ABAC + Tenant Isolation</div>
+        <h2>Access Control</h2>
+        <p class="lede">A <b>PEP</b> (the <code>authorize()</code> guard inside a service) loads the resource and calls the
+          <b>PDP</b> in <code>@aegis/access-control</code>. The PDP runs a deterministic, fail-closed pipeline:
+          tenant isolation → RBAC permission check → ABAC conditions → obligations. Try it.</p>
+
+        <div class="panel">
+          <div class="controls">
+            <div class="field">
+              <label for="dRole">Role (subject)</label>
+              <select id="dRole"></select>
+            </div>
+            <div class="field">
+              <label for="dAction">Action (domain.action)</label>
+              <select id="dAction"></select>
+            </div>
+            <div class="field">
+              <label for="dOwner">Resource owner</label>
+              <select id="dOwner">
+                <option value="self">self · same tenant</option>
+                <option value="other-user">another user · same tenant</option>
+                <option value="other-tenant">another tenant's record</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="dAmount">Resource amount (USD)</label>
+              <select id="dAmount">
+                <option value="500">$500</option>
+                <option value="4500">$4,500</option>
+                <option value="12000">$12,000</option>
+                <option value="80000">$80,000</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="decideBtn">Decide</button>
+            <span class="note" id="decideHint">PDP.decide(principal, action, resource, context) → { allow, reason, obligations }</span>
+          </div>
+          <div id="verdictOut"></div>
+        </div>
+
+        <h3>Permissions × roles matrix</h3>
+        <p style="margin-top:2px">RBAC core: which roles carry which dotted <code>domain.action</code> permissions. ABAC
+          conditions (ownership, amount thresholds, segregation of duties) then <i>narrow</i> a granted permission at decision time.</p>
+        <div style="overflow-x:auto">
+          <table class="tbl matrix" id="permMatrix"></table>
+        </div>
+
+        <div class="callout warn" style="margin-top:18px">
+          <b>Fail-closed everywhere.</b> If the principal's tenant does not match the resource's tenant, the PDP denies
+          <i>before</i> RBAC even runs — and the DB would reject the row anyway under RLS. Missing attributes, an
+          unreachable PDP, or an expired decision-cache entry all resolve to <span class="badge deny">DENY</span>.
+        </div>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../03-access-control-model.md">03 · Access-control model</a>
+          <a href="../05-authn-authz-flow.md">05 · Authn/Authz flow</a>
+          <a href="../services/payroll.md">payroll · field-level + maker-checker</a>
+        </div>
+      </section>
+
+      <!-- ============ 4. MULTI-TENANCY ============ -->
+      <section class="view" id="view-tenancy">
+        <div class="eyebrow">Row-Level Security</div>
+        <h2>Multi-Tenancy</h2>
+        <p class="lede">Aegis runs the <b>pool</b> model: one shared schema, <code>tenant_id</code> on every row, and Postgres
+          RLS as the backstop. The app connects as a <b>non-owner role without BYPASSRLS</b>; each transaction begins with
+          <code>SET LOCAL app.current_tenant</code>. An application bug cannot leak across tenants because the database itself filters.</p>
+
+        <div class="two-col">
+          <div class="panel">
+            <h3 style="margin-top:0">The policy (once per table)</h3>
+            <pre class="code"><span class="c">-- app role is NOT the table owner and has no BYPASSRLS</span>
+<span class="k">ALTER TABLE</span> expense_reports <span class="k">ENABLE ROW LEVEL SECURITY</span>;
+<span class="k">ALTER TABLE</span> expense_reports <span class="k">FORCE  ROW LEVEL SECURITY</span>;
+
+<span class="k">CREATE POLICY</span> tenant_isolation <span class="k">ON</span> expense_reports
+  <span class="k">AS</span> <span class="n">RESTRICTIVE</span>
+  <span class="k">USING</span> (tenant_id = current_setting(<span class="s">'app.current_tenant'</span>)::uuid)
+  <span class="k">WITH CHECK</span> (tenant_id = current_setting(<span class="s">'app.current_tenant'</span>)::uuid);</pre>
+            <pre class="code"><span class="c">-- per request, inside the transaction (rolls back at COMMIT)</span>
+<span class="k">SET LOCAL</span> app.current_tenant = <span class="s">'&lt;tenant from verified JWT&gt;'</span>;
+<span class="k">SELECT</span> * <span class="k">FROM</span> expense_reports;  <span class="c">-- silently scoped</span></pre>
+            <div class="callout warn" style="margin:6px 0 0">
+              <b>SET LOCAL, never SET.</b> Under transaction-mode pooling, a bare <code>SET</code> persists on the pooled
+              connection and the next request inherits the previous tenant. <code>SET LOCAL</code> (or
+              <code>set_config(...,true)</code>) is mandatory.
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3 style="margin-top:0">See it filter</h3>
+            <p style="margin-top:2px">The same physical table holds rows for two tenants. Switch the session tenant —
+              the rows that <code>SET LOCAL</code> would hide are removed from the result set, exactly as RLS does in the DB.</p>
+
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 4px">
+              <span class="note">SET LOCAL app.current_tenant =</span>
+              <div class="toggle-row" id="tenantToggle">
+                <button data-t="all" class="on ta" id="tgAll">all (owner / BYPASSRLS)</button>
+                <button data-t="A">Tenant A</button>
+                <button data-t="B">Tenant B</button>
+              </div>
+            </div>
+
+            <div class="db-table" id="rlsTable">
+              <div class="db-row head">
+                <div>tenant</div><div>id</div><div>title</div><div>amount</div>
+              </div>
+            </div>
+            <p class="note" id="rlsCount" style="margin-top:10px"></p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <b>Belt-and-suspenders.</b> The JWT carries <code>tenant_id</code>, the PDP rejects cross-tenant resources, the
+          repository compiles a <code>tenant_id =</code> predicate, <i>and</i> RLS enforces it in the engine. Four independent
+          layers; any one failing does not leak data. Payroll is the first candidate for a hard-isolation <b>silo</b> tier
+          (schema- or DB-per-tenant) for regulated customers.
+        </div>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../04-multi-tenancy.md">04 · Multi-tenancy</a>
+          <a href="../07-data-models.md">07 · Data models</a>
+          <a href="../services/payroll.md">payroll · silo candidate</a>
+        </div>
+      </section>
+
+      <!-- ============ 5. REQUEST LIFECYCLE ============ -->
+      <section class="view" id="view-lifecycle">
+        <div class="eyebrow">One Request, End to End</div>
+        <h2>Request Lifecycle</h2>
+        <p class="lede">Follow a single call — <code>POST /expenses/:id/approve</code> — from the edge to the audit log.
+          Step through each hop; the active layer is highlighted.</p>
+
+        <div class="stepper" id="lifeSteps"></div>
+
+        <div class="panel step-card" id="lifeCard"></div>
+
+        <div class="step-nav">
+          <button class="btn" id="lifePrev">‹ Prev</button>
+          <span class="step-count" id="lifeCount"></span>
+          <button class="btn" id="lifeNext">Next ›</button>
+        </div>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../05-authn-authz-flow.md">05 · Authn/Authz flow</a>
+          <a href="../06-service-to-service.md">06 · Service-to-service</a>
+          <a href="../10-auditability-and-compliance.md">10 · Auditability</a>
+        </div>
+      </section>
+
+      <!-- ============ 6. ERP CONNECTORS ============ -->
+      <section class="view" id="view-connectors">
+        <div class="eyebrow">Pluggable Integration</div>
+        <h2>ERP Connectors</h2>
+        <p class="lede"><code>@aegis/connectors</code> is a pluggable framework: a common connector interface, an
+          adapter/strategy per ERP, and a registry. Adding a new ERP means writing one adapter — nothing else changes.
+          Aegis ships <b>mock</b> connectors that emulate the handshake / push / status behavior without calling real systems.</p>
+
+        <div class="panel">
+          <h3 style="margin-top:0">Pick a registered connector</h3>
+          <div class="conn-pick" id="connPick"></div>
+
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+            <button class="btn primary" id="pushBtn">Push transaction</button>
+            <button class="btn" id="pushDupBtn">Push the same transaction again</button>
+            <span class="note" id="connHint"></span>
+          </div>
+
+          <div class="flow-log" id="connFlow"></div>
+        </div>
+
+        <h3>The interface every adapter implements</h3>
+        <pre class="code"><span class="k">export interface</span> ErpConnector {
+  <span class="n">readonly</span> key: ConnectorKey;            <span class="c">// LEDGER_ONE | FINOVO | ACCT_BRIDGE</span>
+  authenticate(cfg: ConnectorConfig): <span class="k">Promise</span>&lt;ConnectorSession&gt;;
+  pushTransaction(
+    txn: OutboundTransaction,
+    opts: { idempotencyKey: <span class="k">string</span> }       <span class="c">// dedupe at the boundary</span>
+  ): <span class="k">Promise</span>&lt;PushResult&gt;;
+  fetchStatus(externalRef: <span class="k">string</span>): <span class="k">Promise</span>&lt;SyncStatus&gt;;
+}</pre>
+
+        <div class="callout">
+          <b>Same security path as any internal call.</b> Connector calls flow through the service-to-service auth + request-context
+          propagation + secret-proxy patterns. Every push carries an <b>idempotency key</b>, so a retry (or a duplicate push)
+          is recognized and returns the original result instead of double-posting. Outbound auth is per-connector, carried via the
+          connector's configured scheme — there is no shared tracking header.
+        </div>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../services/expense.md">expense · connector consumer</a>
+          <a href="../services/invoice.md">invoice · header-level reconciliation</a>
+          <a href="../06-service-to-service.md">06 · Service-to-service</a>
+        </div>
+      </section>
+
+      <!-- ============ 7. DEPLOYMENT ============ -->
+      <section class="view" id="view-deploy">
+        <div class="eyebrow">Build Once, Promote Forward</div>
+        <h2>Deployment</h2>
+        <p class="lede">One multi-stage image builds the whole monorepo. A single entrypoint switches its role by
+          <code>PROCESS_TYPE</code>. Images are immutable and tagged by Git SHA — promotion across environments is a
+          <i>re-tag</i>, never a rebuild, so what you tested is byte-for-byte what ships.</p>
+
+        <h3>One image, three roles — <code>PROCESS_TYPE</code></h3>
+        <div class="proc-grid">
+          <div class="proc"><div class="pt">PROCESS_TYPE=api</div><div class="pd">Boots the app named by <code>SERVICE_NAME</code> (e.g. <code>expense</code>): Express + Inversify, readiness-gated.</div></div>
+          <div class="proc"><div class="pt">PROCESS_TYPE=worker</div><div class="pd">Consumes the event bus / BullMQ queues — report exports, scheduled workflow actions, async notifications.</div></div>
+          <div class="proc"><div class="pt">PROCESS_TYPE=migration</div><div class="pd">Runs Umzug migrations as a one-shot task using the same image, then exits.</div></div>
+        </div>
+
+        <pre class="code"><span class="c"># scripts/start.sh — the entrypoint switch</span>
+<span class="k">case</span> <span class="s">"$PROCESS_TYPE"</span> <span class="k">in</span>
+  api)       <span class="k">exec</span> node dist/apps/<span class="s">"$SERVICE_NAME"</span>/main.js ;;
+  worker)    <span class="k">exec</span> node dist/apps/worker/main.js ;;
+  migration) <span class="k">exec</span> node dist/apps/cli/main.js migrate ;;
+<span class="k">esac</span></pre>
+
+        <h3>SHA-image promotion: dev → staging → prod</h3>
+        <p style="margin-top:2px">CI builds and pushes <code>aegis:&lt;git-sha&gt;</code> once. Promotion re-tags the
+          <i>same digest</i> — no rebuild, no drift.</p>
+        <div class="promo">
+          <div class="env">
+            <div class="e">dev</div>
+            <div class="sha">aegis:9f3c1a2</div>
+            <div class="meta">built once · auto-deploy on merge</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="env">
+            <div class="e">staging</div>
+            <div class="sha">aegis:9f3c1a2</div>
+            <div class="meta">re-tagged digest · same bytes</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="env">
+            <div class="e">prod</div>
+            <div class="sha">aegis:9f3c1a2</div>
+            <div class="meta">promote · runtime secrets from param store</div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <b>Runtime secrets, never baked.</b> The image carries no secrets. Each environment injects them from a parameter
+          store keyed by env prefix (<code>/aegis/&lt;env&gt;/...</code>). CI is DRY (YAML anchors) and gated by
+          <code>nx affected</code>; <code>/health?details=true</code> probes DB + cache + bus and readiness gates traffic.
+        </div>
+
+        <h3>One-command local run</h3>
+        <p style="margin-top:2px">A fresh machine, no manual env setup — Postgres (pre-seeded with the RLS non-owner app role),
+          Redis, and every service on one Docker network with committed dummy <code>.env</code> values:</p>
+        <pre class="code"><span class="c"># brings the whole platform up, wired end-to-end</span>
+./scripts/dev-up.sh        <span class="c"># or the VS Code build task — Cmd+Shift+B</span></pre>
+        <p class="note">Per-service <code>apps/&lt;svc&gt;/.env</code> files are committed with internally-consistent dummy values
+          so <code>docker compose up</code> works out of the box. Real environments override via env / param store.</p>
+
+        <div class="crosslinks">
+          <span class="cl-h">Read next</span>
+          <a href="../09-deployment-and-ops.md">09 · Deployment &amp; ops</a>
+          <a href="../08-api-conventions.md">08 · API conventions</a>
+          <a href="../../SPEC.md">SPEC.md §7, §10.4</a>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============ DATA (single source: SPEC.md) ============ */
+
+  var SERVICES = [
+    { id:"user-management", chip:"identity · PAP", sub:"Identity + access system of record",
+      resp:"Tenants, users, memberships, roles, permissions, org hierarchy, teams, invitations, sessions, and auth-token issuance. The Policy Administration Point (PAP) and a reference IdP.",
+      ac:"Owns the role/permission/policy catalog. Runtime CRUD of roles & permissions (PAP). Supplies attributes to the PDP (PIP): role, memberships, hierarchy, manager-of.",
+      perms:["role.assign","permission.create","membership.manage","tenant.read"] },
+    { id:"expense", chip:"reports · approvals", sub:"Expense reports + multi-level approval",
+      resp:"Expense reports, user-entered items, categories, receipts, comments, and multi-level approval. Consumes the ERP connector framework for reconciliation. No GL codes, no extracted line items.",
+      ac:"RBAC + ABAC: 'approver can approve in own tenant up to $X'. Ownership scope (Own / OwnAndTeam / All). Approval cannot be self-approved.",
+      perms:["expense.report.create","expense.report.submit","expense.report.approve","expense.report.read"] },
+    { id:"payroll", chip:"PII · maker-checker", sub:"Highest-sensitivity PII + pay runs",
+      resp:"Employees, compensation, pay calendars, earning/deduction codes, jurisdiction tax config, pay runs, payslips, and the append-only disbursement ledger.",
+      ac:"Field-level RBAC + masking (salary/bank/national-id encrypted, AES-256). Segregation of duties: the run approver must differ from the input editor. Every sensitive-field read is audited.",
+      perms:["payroll.payrun.input","payroll.payrun.approve","payroll.payslip.read","payroll.employee.read.sensitive"] },
+    { id:"reporting", chip:"CQRS-lite read", sub:"Cross-service read models + export",
+      resp:"Cross-service read models, declarative report definitions, scheduling, and async export. The CQRS-lite read side.",
+      ac:"Row + column-level control on output; access-scope is part of every cache key (no cross-user leakage). Never bypasses RLS — inherits tenant filtering in the DB.",
+      perms:["reporting.report.run","reporting.report.define","reporting.export.create"] },
+    { id:"workflow", chip:"rules-as-data", sub:"Rules engine triggered by events",
+      resp:"A rules-as-data engine (conditions + actions) triggered by domain events. Drives approval chains and automated actions.",
+      ac:"Relationship-shaped (approval chains) — the first candidate for a ReBAC extension. Uses delegated tokens (sub + act) so audit shows user + acting service.",
+      perms:["workflow.rule.create","workflow.rule.run","workflow.action.execute"] },
+    { id:"notification", chip:"idempotent", sub:"In-app + email, templated",
+      resp:"In-app and email notifications, templated, logged, and idempotent. Driven by already-authorized domain events.",
+      ac:"Consumes already-authorized events and verified context — never re-derives authority. Requires propagated user/tenant context; guards against ambient authority.",
+      perms:["notification.send","notification.template.manage","notification.read"] },
+    { id:"invoice", chip:"header-level", sub:"Invoice lifecycle + reconciliation",
+      resp:"Invoice lifecycle/state machine, invoice metadata, and approval binding. Header-level only — no line items, no GL codes.",
+      ac:"'Matching' = duplicate detection (vendor + invoice_number + amount) + threshold/variance vs an optional PO reference + per-tenant limits + approval routing. RBAC + ABAC + tenant RLS.",
+      perms:["invoice.create","invoice.approve","invoice.reconcile","invoice.read"] },
+    { id:"gateway", chip:"edge", sub:"Edge JWT validation + routing",
+      resp:"The single entry point: validates JWTs at the edge, routes to services, applies rate limiting, mints the per-request X-Correlation-Id, and performs token exchange (RFC 8693) for internal hops.",
+      ac:"Validates RS256/ES256 JWTs against JWKS at the edge and checks audience. Downscopes + re-audiences tokens for downstream calls (delegation: sub + act). Trust is re-verified per service — defense in depth.",
+      perms:["(edge: validates & propagates — no business permissions)"] }
+  ];
+
+  /* Roles → permissions (RBAC core). '*' on a domain = all actions in that domain. */
+  var ROLES = {
+    "platform-admin":    { label:"Platform Admin",   grants:{ "*":true } },
+    "tenant-admin":      { label:"Tenant Admin",      grants:{ "role":true,"permission":true,"membership":true,"expense":true,"invoice":true,"reporting":true,"notification":true } },
+    "finance-approver":  { label:"Finance Approver",  grants:{ "expense.report.approve":true,"expense.report.read":true,"invoice.approve":true,"invoice.read":true,"invoice.reconcile":true,"reporting.report.run":true } },
+    "payroll-manager":   { label:"Payroll Manager",   grants:{ "payroll.payrun.approve":true,"payroll.payslip.read":true,"payroll.employee.read.sensitive":true,"reporting.report.run":true } },
+    "payroll-clerk":     { label:"Payroll Clerk",     grants:{ "payroll.payrun.input":true,"payroll.payslip.read":true } },
+    "employee":          { label:"Employee",          grants:{ "expense.report.create":true,"expense.report.submit":true,"expense.report.read":true,"notification.read":true } },
+    "auditor":           { label:"Auditor (read-only)",grants:{ "expense.report.read":true,"invoice.read":true,"payroll.payslip.read":true,"reporting.report.run":true } }
+  };
+
+  /* Actions shown in the picker (domain.action) with ABAC hints. */
+  var ACTIONS = [
+    { id:"expense.report.read",   abac:"scope" },
+    { id:"expense.report.submit", abac:"owner" },
+    { id:"expense.report.approve",abac:"approve" },
+    { id:"invoice.approve",       abac:"approve" },
+    { id:"invoice.reconcile",     abac:"none" },
+    { id:"payroll.payrun.input",  abac:"none" },
+    { id:"payroll.payrun.approve",abac:"sod" },
+    { id:"payroll.payslip.read",  abac:"scope" },
+    { id:"reporting.report.run",  abac:"none" },
+    { id:"role.assign",           abac:"none" }
+  ];
+
+  /* Permissions × roles matrix columns */
+  var MATRIX_PERMS = [
+    "expense.report.create","expense.report.approve","invoice.approve",
+    "payroll.payrun.input","payroll.payrun.approve","payroll.payslip.read",
+    "reporting.report.run","role.assign"
+  ];
+
+  /* ============ RBAC helper ============ */
+  function roleGrants(roleKey, action) {
+    var g = ROLES[roleKey].grants;
+    if (g["*"]) return true;                       // platform-admin
+    if (g[action]) return true;                    // exact permission
+    var domain = action.split(".")[0];
+    if (g[domain]) return true;                    // domain-wide grant (e.g. tenant-admin 'expense')
+    return false;
+  }
+
+  /* ============ Section nav ============ */
+  var navBtns = Array.prototype.slice.call(document.querySelectorAll("#nav button"));
+  var views = {};
+  Array.prototype.slice.call(document.querySelectorAll("section.view")).forEach(function (s) {
+    views[s.id.replace("view-", "")] = s;
+  });
+  function show(view) {
+    navBtns.forEach(function (b) { b.classList.toggle("active", b.dataset.view === view); });
+    Object.keys(views).forEach(function (k) { views[k].classList.toggle("active", k === view); });
+    document.querySelector(".content").scrollTop = 0;
+    window.scrollTo(0, 0);
+    if (window.innerWidth <= 920) document.getElementById("sidebar").classList.remove("open");
+    if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view);
+  }
+  navBtns.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.view); }); });
+  document.getElementById("menuBtn").addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+
+  /* ============ 1. Overview cards ============ */
+  (function () {
+    var wrap = document.getElementById("serviceCards");
+    SERVICES.forEach(function (s) {
+      var el = document.createElement("div");
+      el.className = "card";
+      var perms = s.perms.map(function (p) { return '<span class="pill">' + p + "</span>"; }).join("");
+      el.innerHTML =
+        '<div class="ct"><span class="title">' + s.id + '</span><span class="chip">' + s.chip + "</span></div>" +
+        '<div class="sub">' + s.sub + "</div>" +
+        '<div class="detail">' +
+          '<span class="lbl">Responsibility</span>' + s.resp +
+          '<span class="lbl">Access-control specifics</span>' + s.ac +
+          '<span class="lbl">Representative permissions</span><div class="perms">' + perms + "</div>" +
+        "</div>";
+      el.addEventListener("click", function () { el.classList.toggle("open"); });
+      wrap.appendChild(el);
+    });
+  })();
+
+  /* ============ 3. Access control — pickers ============ */
+  (function () {
+    var roleSel = document.getElementById("dRole");
+    Object.keys(ROLES).forEach(function (k) {
+      var o = document.createElement("option"); o.value = k; o.textContent = ROLES[k].label; roleSel.appendChild(o);
+    });
+    roleSel.value = "finance-approver";
+
+    var actSel = document.getElementById("dAction");
+    ACTIONS.forEach(function (a) {
+      var o = document.createElement("option"); o.value = a.id; o.textContent = a.id; actSel.appendChild(o);
+    });
+    actSel.value = "expense.report.approve";
+
+    function abacOf(id) { for (var i=0;i<ACTIONS.length;i++) if (ACTIONS[i].id===id) return ACTIONS[i].abac; return "none"; }
+
+    function decide() {
+      var roleKey = roleSel.value, action = actSel.value;
+      var owner = document.getElementById("dOwner").value;
+      var amount = parseInt(document.getElementById("dAmount").value, 10);
+      var abac = abacOf(action);
+      var steps = [];
+      var allow = true;
+      var obligations = [];
+
+      // --- 1. Tenant isolation (fail-closed, runs first) ---
+      if (owner === "other-tenant") {
+        steps.push({ k:"x", t:"Tenant isolation — resource.tenant ≠ principal.tenant. <b>Denied before RBAC.</b> RLS would also reject this row." });
+        allow = false;
+      } else {
+        steps.push({ k:"ok", t:"Tenant isolation — resource and principal share the same tenant. SET LOCAL app.current_tenant scopes the query." });
+      }
+
+      // --- 2. RBAC ---
+      if (allow) {
+        if (roleGrants(roleKey, action)) {
+          steps.push({ k:"ok", t:"RBAC — role <b>" + ROLES[roleKey].label + "</b> carries <code>" + action + "</code>." });
+        } else {
+          steps.push({ k:"x", t:"RBAC — role <b>" + ROLES[roleKey].label + "</b> does not carry <code>" + action + "</code>." });
+          allow = false;
+        }
+      }
+
+      // --- 3. ABAC conditions ---
+      if (allow) {
+        if (abac === "owner" && owner !== "self") {
+          steps.push({ k:"x", t:"ABAC (ownership) — this action requires <b>OwnOnly</b> scope; the resource is owned by another user." });
+          allow = false;
+        } else if (abac === "scope") {
+          if (owner === "self") {
+            steps.push({ k:"ok", t:"ABAC (scope) — <b>OwnOnly</b> satisfied: principal owns the resource." });
+          } else {
+            steps.push({ k:"ok", t:"ABAC (scope) — role grants <b>OwnAndTeam / All</b>; obligation: <span class='obl'>mask sensitive columns</span> on non-own rows." });
+            obligations.push("column-mask: bank, national_id");
+          }
+        } else if (abac === "approve") {
+          if (owner === "self") {
+            steps.push({ k:"x", t:"ABAC (segregation of duties) — an approver may not approve their <b>own</b> submission." });
+            allow = false;
+          } else if (amount > 10000 && roleKey === "finance-approver") {
+            steps.push({ k:"x", t:"ABAC (amount threshold) — Finance Approver limit is <b>$10,000</b>; $" + amount.toLocaleString() + " exceeds it. Routes to a higher approver." });
+            allow = false;
+          } else {
+            steps.push({ k:"ok", t:"ABAC (approval) — approver ≠ submitter and $" + amount.toLocaleString() + " within limit." });
+          }
+        } else if (abac === "sod") {
+          steps.push({ k:"ok", t:"ABAC (maker-checker) — pay-run approver verified ≠ the clerk who entered inputs." });
+          obligations.push("audit: sensitive pay-run approval");
+        } else {
+          steps.push({ k:"ok", t:"ABAC — no additional conditions for this action." });
+        }
+      }
+
+      // --- 4. Obligations / audit ---
+      if (allow) {
+        steps.push({ k:"ok", t:"Obligations applied; PEP records a hash-chained audit entry (actor, tenant, intent, decision, permissions-at-time)." });
+      }
+
+      render(allow, steps, obligations, roleKey, action);
+    }
+
+    function render(allow, steps, obligations, roleKey, action) {
+      var out = document.getElementById("verdictOut");
+      var lis = steps.map(function (s) {
+        var icon = s.k === "ok" ? '<span class="ok">✓</span> ' : '<span class="x">✕</span> ';
+        return "<li>" + icon + s.t + "</li>";
+      }).join("");
+      var obl = obligations.length
+        ? '<div style="margin-top:10px"><span class="badge" style="border-color:rgba(231,180,80,0.4);color:#e7b450">obligations</span> ' +
+          obligations.map(function (o){ return '<code>' + o + '</code>'; }).join("  ") + "</div>"
+        : "";
+      out.innerHTML =
+        '<div class="verdict ' + (allow ? "allow" : "deny") + '">' +
+          '<div class="head"><span class="glyph">' + (allow ? "✓" : "✕") + '</span>' +
+            '<div><div class="vtitle">' + (allow ? "ALLOW" : "DENY") + '</div>' +
+            '<div class="note mono" style="margin-top:2px">decide(' + roleKey + ', ' + action + ') →</div></div></div>' +
+          '<div class="body"><ol>' + lis + "</ol>" + obl + "</div>" +
+        "</div>";
+    }
+
+    document.getElementById("decideBtn").addEventListener("click", decide);
+    [roleSel, actSel, document.getElementById("dOwner"), document.getElementById("dAmount")]
+      .forEach(function (e) { e.addEventListener("change", decide); });
+    decide();
+  })();
+
+  /* ============ 3b. Permissions × roles matrix ============ */
+  (function () {
+    var tbl = document.getElementById("permMatrix");
+    var roleKeys = Object.keys(ROLES);
+    var head = "<tr><th>role \\ permission</th>" +
+      MATRIX_PERMS.map(function (p){ return '<th class="rot">' + p + "</th>"; }).join("") + "</tr>";
+    var rows = roleKeys.map(function (rk) {
+      var cells = MATRIX_PERMS.map(function (p) {
+        return roleGrants(rk, p)
+          ? '<td class="y" title="granted">●</td>'
+          : '<td class="n" title="not granted">—</td>';
+      }).join("");
+      return '<tr><td class="mono">' + ROLES[rk].label + "</td>" + cells + "</tr>";
+    }).join("");
+    tbl.innerHTML = head + rows;
+  })();
+
+  /* ============ 4. Multi-tenancy RLS ============ */
+  (function () {
+    var ROWS = [
+      { t:"A", id:"er_8f12", title:"Q2 client travel",      amt:"$4,500" },
+      { t:"B", id:"er_2a55", title:"Onboarding hardware",    amt:"$1,280" },
+      { t:"A", id:"er_91c0", title:"Conference registration", amt:"$950"   },
+      { t:"B", id:"er_77de", title:"Cloud overage",          amt:"$12,400" },
+      { t:"A", id:"er_3b04", title:"Team offsite catering",  amt:"$2,150" },
+      { t:"B", id:"er_5e60", title:"Contractor invoice",     amt:"$8,900" }
+    ];
+    var table = document.getElementById("rlsTable");
+    ROWS.forEach(function (r) {
+      var el = document.createElement("div");
+      el.className = "db-row t-" + r.t.toLowerCase();
+      el.dataset.t = r.t;
+      el.innerHTML =
+        '<div class="tg">Tenant ' + r.t + "</div>" +
+        '<div>' + r.id + "</div>" +
+        '<div style="font-family:var(--sans);color:var(--text-dim)">' + r.title + "</div>" +
+        "<div>" + r.amt + "</div>";
+      table.appendChild(el);
+    });
+
+    var btns = Array.prototype.slice.call(document.querySelectorAll("#tenantToggle button"));
+    function apply(t) {
+      btns.forEach(function (b) {
+        var on = b.dataset.t === t;
+        b.classList.toggle("on", on);
+        b.classList.remove("ta","tb");
+        if (on) b.classList.add(t === "A" ? "ta" : (t === "B" ? "tb" : "ta"));
+      });
+      var visible = 0;
+      Array.prototype.slice.call(table.querySelectorAll(".db-row:not(.head)")).forEach(function (row) {
+        var match = (t === "all") || row.dataset.t === t;
+        row.classList.toggle("dim", !match && t !== "all");
+        if (match) visible++;
+      });
+      var cnt = document.getElementById("rlsCount");
+      if (t === "all") {
+        cnt.innerHTML = "<b>6 rows</b> visible — the owner / BYPASSRLS view (development only). The application role never has this.";
+      } else {
+        cnt.innerHTML = "<b>" + visible + " rows</b> visible — RLS hides every row where <code>tenant_id ≠ '" + t + "'</code>. The hidden rows are not just styled away; the database does not return them.";
+      }
+    }
+    btns.forEach(function (b) { b.addEventListener("click", function () { apply(b.dataset.t); }); });
+    apply("all");
+  })();
+
+  /* ============ 5. Request lifecycle stepper ============ */
+  (function () {
+    var STEPS = [
+      { tag:"gateway", where:"gateway · @aegis/service-core",
+        title:"Edge: validate the JWT",
+        body:"The gateway is the single entry point. It validates the RS256/ES256 access token against the IdP's JWKS, checks <code>exp</code> and the per-service <code>aud</code> claim, and mints a fresh <code>X-Correlation-Id</code> for this business request. An invalid or expired token is rejected here — fail-closed.",
+        code:"Authorization: Bearer eyJhbGciOiJSUzI1Ni…\nX-Correlation-Id: 0f9c…  (minted at the edge)" },
+      { tag:"context", where:"@aegis/service-core · context middleware",
+        title:"Context + strict header validation",
+        body:"On ingress the context middleware asserts the required headers and populates the AsyncLocalStorage request context: <code>tenantId, userId, roles, correlationId, traceId, caller, sourceService</code>. Missing or malformed values are rejected — never defaulted to \"UNKNOWN\".",
+        code:"requestContext = {\n  tenantId, userId, roles,\n  correlationId, traceId, caller, sourceService\n}  // fail-closed if a required header is absent" },
+      { tag:"service", where:"expense service · @aegis/service-core",
+        title:"Service re-validates the token",
+        body:"Defense in depth: the expense service does <b>not</b> trust the gateway blindly. It re-verifies the signed JWT via JWKS and re-checks <code>aud = expense</code> before any handler runs. Token exchange (RFC 8693) may have downscoped the token for this hop.",
+        code:"verifyJwt(token, { jwks, audience: 'expense' });\n// internal hop also carries a signed internal JWT\n// + X-Internal-Origin + X-Source-Service" },
+      { tag:"pep", where:"@aegis/access-control · PEP guard",
+        title:"PEP loads the resource, calls the PDP",
+        body:"The route is wrapped <code>authenticate → authorize('expense.report.approve', { resourceLoader }) → handler</code>. The PEP loads the target expense report and calls the PDP. The PDP runs tenant-isolation → RBAC → ABAC and returns a verdict (with obligations). Decisions are cached at the PEP with a short TTL, fail-closed.",
+        code:"const v = await pdp.decide(principal, action, resource, ctx);\nif (!v.allow) throw Forbidden(v.reason);\napplyObligations(v.obligations);  // e.g. column masking" },
+      { tag:"rls", where:"@aegis/db · RLS helper",
+        title:"RLS scopes the query",
+        body:"Inside the transaction, <code>SET LOCAL app.current_tenant</code> is set from the verified context before any SQL runs. Even though the PDP already checked tenancy, Postgres RLS independently filters every row — an app bug cannot leak across tenants. The repository also compiles an explicit tenant predicate.",
+        code:"BEGIN;\nSET LOCAL app.current_tenant = '<tenantId>';\nUPDATE expense_reports SET status='approved'\n  WHERE id = $1;   -- RLS adds tenant_id = current tenant\nCOMMIT;" },
+      { tag:"handler", where:"expense service · handler",
+        title:"Handler runs the business logic",
+        body:"With authorization granted and the query tenant-scoped, the handler executes the approval: it transitions the report's state machine, records the approval, and publishes an <code>expense.report.approved</code> event onto <code>@aegis/events</code> (which notification later consumes — already authorized, never re-deriving authority).",
+        code:"report.approve(approverId);\nawait events.publish('expense.report.approved', {\n  reportId, tenantId, approverId\n});" },
+      { tag:"audit", where:"@aegis/service-core · audit middleware",
+        title:"Tamper-evident audit",
+        body:"The write emits a hash-chained audit entry capturing the four required facts: the <b>event</b>, the <b>intent</b>, the <b>actor identity</b> at time of action, and the <b>permissions at time of action</b> — tagged with <code>tenant_id</code> and the <code>correlationId</code>. Each entry's hash depends on the previous, so any later alteration breaks the chain.",
+        code:"audit.append({\n  actor: userId, tenant: tenantId,\n  intent: 'expense.report.approve', decision: 'allow',\n  permissionsAtTime: ['expense.report.approve'],\n  prevHash, hash: sha256(prevHash + payload)\n});" }
+    ];
+    var i = 0;
+    var stepper = document.getElementById("lifeSteps");
+    STEPS.forEach(function (s, idx) {
+      var d = document.createElement("div");
+      d.className = "step-dot";
+      d.innerHTML = '<span class="i">' + (idx + 1) + "</span>" + s.tag;
+      d.addEventListener("click", function () { i = idx; paint(); });
+      stepper.appendChild(d);
+    });
+    function paint() {
+      var dots = stepper.children;
+      for (var k = 0; k < dots.length; k++) {
+        dots[k].classList.toggle("active", k === i);
+        dots[k].classList.toggle("done", k < i);
+      }
+      var s = STEPS[i];
+      document.getElementById("lifeCard").innerHTML =
+        '<div class="where">' + s.where + "</div>" +
+        "<h3>" + (i + 1) + ". " + s.title + "</h3>" +
+        "<p>" + s.body + "</p>" +
+        '<pre class="code">' + escapeHtml(s.code) + "</pre>";
+      document.getElementById("lifeCount").textContent = "Step " + (i + 1) + " of " + STEPS.length;
+      document.getElementById("lifePrev").disabled = i === 0;
+      document.getElementById("lifeNext").disabled = i === STEPS.length - 1;
+    }
+    document.getElementById("lifePrev").addEventListener("click", function () { if (i > 0) { i--; paint(); } });
+    document.getElementById("lifeNext").addEventListener("click", function () { if (i < STEPS.length - 1) { i++; paint(); } });
+    paint();
+  })();
+
+  /* ============ 6. ERP connectors ============ */
+  (function () {
+    var CONNECTORS = [
+      { key:"LEDGER_ONE",  name:"LedgerOne",  desc:"OAuth2 handshake · batch posting",  scheme:"OAuth2 client-credentials" },
+      { key:"FINOVO",      name:"Finovo",     desc:"API-key handshake · real-time push", scheme:"signed API key" },
+      { key:"ACCT_BRIDGE", name:"AcctBridge", desc:"session-token · webhook status",     scheme:"session token + webhook" }
+    ];
+    var selected = CONNECTORS[0];
+    var pushedKeys = {};  // idempotency-key → externalRef (per connector)
+
+    var pick = document.getElementById("connPick");
+    CONNECTORS.forEach(function (c, idx) {
+      var o = document.createElement("div");
+      o.className = "opt" + (idx === 0 ? " sel" : "");
+      o.innerHTML = '<div class="cn">' + c.name + '</div><div class="cd">' + c.desc + "</div>";
+      o.addEventListener("click", function () {
+        selected = c;
+        Array.prototype.slice.call(pick.children).forEach(function (x) { x.classList.remove("sel"); });
+        o.classList.add("sel");
+        document.getElementById("connHint").textContent = "registry.get('" + c.key + "') · auth scheme: " + c.scheme;
+        document.getElementById("connFlow").innerHTML = "";
+      });
+      pick.appendChild(o);
+    });
+    document.getElementById("connHint").textContent = "registry.get('LEDGER_ONE') · auth scheme: " + selected.scheme;
+
+    function steps(c, idemKey, isDup) {
+      var ref = "ext_" + idemKey.slice(0, 6);
+      var arr = [
+        { i:"1", t:"<b>registry.get('" + c.key + "')</b> resolves the adapter", m:"@aegis/connectors · strategy pattern — no service code changes per ERP" },
+        { i:"2", t:"<b>authenticate(config)</b> → connector session", m:"scheme: " + c.scheme + " · secret pulled from the param-store proxy, never baked" },
+        { i:"3", t:"<b>pushTransaction(txn, { idempotencyKey })</b>", m:"idempotencyKey = " + idemKey, idem:true }
+      ];
+      if (isDup) {
+        arr.push({ i:"✓", t:"<b>Idempotent hit</b> — key already seen; returns original <code>" + (pushedKeys[c.key+idemKey] || ref) + "</code>", m:"no double-post; PushResult { duplicate:true }", idem:true });
+      } else {
+        arr.push({ i:"4", t:"Adapter maps the transaction to the ERP's shape and posts", m:"context propagated: X-Tenant-Id, X-Correlation-Id, X-Source-Service" });
+        arr.push({ i:"5", t:"<b>PushResult</b> { externalRef: <code>" + ref + "</code>, status: 'posted' }", m:"externalRef stored against the idempotency key" });
+        arr.push({ i:"6", t:"<b>fetchStatus(" + ref + ")</b> → reconciled", m:"SyncStatus { state: 'reconciled' } recorded on the record" });
+      }
+      return arr;
+    }
+
+    function run(isDup) {
+      var c = selected;
+      var idemKey = isDup
+        ? (window.__lastIdem || (window.__lastIdem = "idem_" + Math.random().toString(16).slice(2, 12)))
+        : (window.__lastIdem = "idem_" + Math.random().toString(16).slice(2, 12));
+      if (!isDup) { pushedKeys[c.key + idemKey] = "ext_" + idemKey.slice(0, 6); }
+
+      var flow = document.getElementById("connFlow");
+      flow.innerHTML = "";
+      var arr = steps(c, idemKey, isDup);
+      arr.forEach(function (s, idx) {
+        var el = document.createElement("div");
+        el.className = "flow-step" + (s.idem ? " idem" : "");
+        el.innerHTML = '<div class="fi">' + s.i + '</div><div class="ft">' + s.t + '<div class="meta">' + s.m + "</div></div>";
+        flow.appendChild(el);
+        setTimeout(function () { el.classList.add("show"); }, 90 * idx);
+      });
+    }
+
+    document.getElementById("pushBtn").addEventListener("click", function () { run(false); });
+    document.getElementById("pushDupBtn").addEventListener("click", function () { run(true); });
+  })();
+
+  /* ============ utils ============ */
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /* deep-link on load */
+  var initial = (location.hash || "#overview").slice(1);
+  if (!views[initial]) initial = "overview";
+  show(initial);
+})();
+</script>
+</body>
+</html>

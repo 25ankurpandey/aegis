@@ -1,0 +1,1792 @@
+openapi: 3.0.3
+info:
+  title: Aegis Platform API
+  version: v1
+  description: >
+    HTTP API for the Aegis enterprise access-control platform — a multi-tenant,
+    microservices SaaS substrate (centralized RBAC + ABAC PDP/PEP, PostgreSQL
+    row-level tenant isolation, signed service-to-service calls, hash-chained
+    audit). Seven business services sit behind a single gateway.
+
+
+    **Edge routing.** All authenticated traffic enters through the gateway, which
+    resolves the first path segment (`user-management`, `expense`, `payroll`,
+    `reporting`, `workflow`, `notification`, `invoice`) to a downstream service
+    and forwards the request unchanged. Each service independently re-validates
+    auth via its own PEP (defense in depth). Every external path therefore has the
+    form `/{service}/v1/...` (public prefix `/v1`). `/health` on each service and
+    on the gateway bypasses auth/context middleware.
+
+
+    **Required context headers.** Authenticated requests must carry
+    `X-Tenant-Id` and `X-Correlation-Id` (the gateway mints the correlation id at
+    the edge if absent and echoes it on every response, including error hops).
+    `X-Caller` is set to `gateway` on every forwarded hop. The tenant is ambient
+    (driven into PostgreSQL RLS via `SET LOCAL app.current_tenant`) — there is no
+    tenant path segment. Money/state-changing writes may honor an
+    `Idempotency-Key` header (pay-run disburse).
+
+
+    **Auth.** `register` and `login` are public. Every other route requires a
+    Bearer JWT and a `domain.action` permission enforced by the PEP. Payroll list
+    additionally applies a field-level obligation: sensitive PII is cleared unless
+    the principal also holds `payroll.sensitive.read`.
+
+
+    **Envelopes.** Single-entity reads/writes return `{ data: <entity> }`; paged
+    lists return `{ data: [...], meta: {...} }` (some legacy list routes return the
+    object directly). Errors return `{ errors: [{ code, type, message,
+    correlationId }] }`. The gateway adds 502/503/504 for upstream failures.
+  contact:
+    name: Aegis Platform
+servers:
+  - url: http://localhost:4000
+    description: Gateway (single entry point — all /{service}/v1 routes)
+  - url: http://localhost:4001
+    description: user-management service (direct)
+  - url: http://localhost:4002
+    description: expense service (direct)
+  - url: http://localhost:4003
+    description: payroll service (direct)
+  - url: http://localhost:4004
+    description: reporting service (direct)
+  - url: http://localhost:4005
+    description: workflow service (direct)
+  - url: http://localhost:4006
+    description: notification service (direct)
+  - url: http://localhost:4007
+    description: invoice service (direct)
+
+tags:
+  - name: user-management
+    description: Tenants, users, roles, permissions, tenant config, auth token issuance (the IdP / PAP).
+  - name: expense
+    description: Expense reports + line items, multi-level approval lifecycle, comments, reimbursement.
+  - name: invoice
+    description: Invoice lifecycle/state machine, line items, approval binding.
+  - name: payroll
+    description: Employees (highest-sensitivity PII) + pay-run lifecycle (calculate/approve/disburse).
+  - name: reporting
+    description: Declarative report definitions + asynchronous report runs (CQRS-lite read side).
+  - name: workflow
+    description: Rules-as-data engine (conditions + actions) authored and dry-run.
+  - name: notification
+    description: In-app inbox reads + mark-as-read (write path is event-only).
+  - name: health
+    description: Liveness/readiness probes (no auth, no context middleware).
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Authenticated user JWT issued by user-management `/auth/login`. Carried as
+        `Authorization: Bearer <token>`. The gateway propagates it downstream; each
+        service validates it and resolves the principal's permissions.
+
+  parameters:
+    TenantHeader:
+      name: X-Tenant-Id
+      in: header
+      required: true
+      description: Tenant (organization) the request operates within. Drives PostgreSQL RLS.
+      schema:
+        type: string
+    CorrelationHeader:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: >
+        Request-tracking id. Minted at the gateway if absent and echoed on every
+        response (including error hops). Required on every internal hop.
+      schema:
+        type: string
+        format: uuid
+    IdempotencyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Idempotency key for money/state-changing writes (honored by pay-run disburse).
+      schema:
+        type: string
+    PageQuery:
+      name: page
+      in: query
+      required: false
+      description: 1-based page number (default 1).
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeQuery:
+      name: pageSize
+      in: query
+      required: false
+      description: Page size (default 25, max 200).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 25
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      description: Terminal error shape emitted by the service-core error middleware (and the gateway).
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                description: Stable machine code, e.g. E_VALIDATION, E_UNAUTHORIZED, E_FORBIDDEN, E_NOT_FOUND, E_CONFLICT, E_GATEWAY_TIMEOUT.
+              type:
+                type: string
+                description: Error category, e.g. VALIDATION, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, GATEWAY, SYSTEM.
+              message:
+                type: string
+              correlationId:
+                type: string
+            required: [code, type, message, correlationId]
+      required: [errors]
+
+    DataEnvelope:
+      type: object
+      description: Single-entity envelope.
+      properties:
+        data:
+          type: object
+      required: [data]
+
+    PagedEnvelope:
+      type: object
+      description: Paged list envelope.
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            total:
+              type: integer
+
+    HealthStatus:
+      type: object
+      properties:
+        service:
+          type: string
+        status:
+          type: string
+          enum: [ok, degraded]
+        uptime:
+          type: number
+        db:
+          type: boolean
+        cache:
+          type: boolean
+      required: [service, status, uptime]
+
+    # ---- user-management ----
+    RegisterRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        firstName: { type: string }
+        lastName: { type: string }
+      required: [email, password]
+    LoginRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+      required: [email, password]
+    CreateRoleRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        description: { type: string }
+        permissions:
+          type: array
+          minItems: 1
+          items: { type: string }
+      required: [name, permissions]
+    AssignRoleRequest:
+      type: object
+      properties:
+        roleId: { type: string, format: uuid }
+        scope:
+          type: string
+          description: Optional Scope enum value.
+      required: [roleId]
+    SetConfigRequest:
+      type: object
+      properties:
+        value:
+          description: Arbitrary config value (any JSON type).
+      required: [value]
+    SetFlagRequest:
+      type: object
+      properties:
+        enabled: { type: boolean }
+      required: [enabled]
+
+    # ---- expense ----
+    CreateExpenseRequest:
+      type: object
+      properties:
+        amount: { type: integer, description: Integer minor units. }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        merchant: { type: string }
+        incurredOn: { type: string, format: date }
+        description: { type: string }
+        categoryId: { type: string, format: uuid }
+        receiptRef: { type: string }
+        reportId: { type: string, format: uuid }
+      required: [amount]
+    CreateReportRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+      required: [name]
+    AttachExpenseRequest:
+      type: object
+      description: Either an existing expenseId OR an inline amount must be provided.
+      properties:
+        expenseId: { type: string, format: uuid }
+        amount: { type: integer }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        merchant: { type: string }
+        incurredOn: { type: string, format: date }
+        description: { type: string }
+        categoryId: { type: string, format: uuid }
+        receiptRef: { type: string }
+        reportId: { type: string, format: uuid }
+    SubmitRequest:
+      type: object
+      properties:
+        note: { type: string }
+    DecideRequest:
+      type: object
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        comment: { type: string }
+      required: [decision]
+    ApproveRequest:
+      type: object
+      properties:
+        comment: { type: string }
+    RejectRequest:
+      type: object
+      properties:
+        reason: { type: string }
+        comment: { type: string }
+    ReimburseRequest:
+      type: object
+      properties:
+        comment: { type: string }
+    RecallRequest:
+      type: object
+      properties:
+        reason: { type: string }
+        comment: { type: string }
+    AddCommentRequest:
+      type: object
+      properties:
+        body: { type: string, minLength: 1 }
+      required: [body]
+
+    # ---- invoice ----
+    CreateInvoiceRequest:
+      type: object
+      properties:
+        vendorId: { type: string, format: uuid }
+        vendorName: { type: string, minLength: 1 }
+        invoiceNumber: { type: string, minLength: 1 }
+        invoiceDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        transactionType: { type: string, description: InvoiceTransactionType enum value. }
+        amountMinor: { type: integer, minimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3, description: Uppercase ISO currency. }
+      required: [vendorName, invoiceNumber, invoiceDate, amountMinor, currency]
+    ApproveInvoiceRequest:
+      type: object
+      properties:
+        comment: { type: string }
+        approvalLevel: { type: integer, minimum: 1 }
+    DecideInvoiceRequest:
+      type: object
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        comment: { type: string }
+      required: [decision]
+
+    # ---- payroll ----
+    CreateEmployeeRequest:
+      type: object
+      properties:
+        workJurisdiction: { type: string, minLength: 2 }
+        residenceJurisdiction: { type: string }
+        personRef: { type: string, format: uuid }
+        employmentStatus: { type: string }
+        bankAccount: { type: string }
+        nationalId: { type: string }
+      required: [workJurisdiction]
+    CreatePayRunRequest:
+      type: object
+      properties:
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        payDate: { type: string, format: date }
+        type: { type: string, description: PayRunType enum value. }
+        payCalendarId: { type: string, format: uuid }
+        employeeIds:
+          type: array
+          items: { type: string, format: uuid }
+      required: [periodStart, periodEnd, payDate]
+    PayRunDecideRequest:
+      type: object
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        comment: { type: string }
+      required: [decision]
+    PayRunApproveRequest:
+      type: object
+      properties:
+        comment: { type: string }
+
+    # ---- reporting ----
+    ReportSpec:
+      type: object
+      description: Declarative report spec (validated as data — never raw SQL).
+      properties:
+        measures:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              agg: { type: string }
+              field: { type: string }
+            required: [name, agg, field]
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              field: { type: string }
+              grain: { type: string }
+            required: [name, field]
+        filters:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              op: { type: string }
+              value: {}
+            required: [field, op]
+        grain: { type: string }
+        source: { type: string }
+    CreateDefinitionRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        spec: { $ref: '#/components/schemas/ReportSpec' }
+        requiredPermission: { type: string }
+      required: [name, spec]
+    CreateRunRequest:
+      type: object
+      properties:
+        definitionId: { type: string, format: uuid }
+        params: { type: object, additionalProperties: true }
+      required: [definitionId]
+
+    # ---- workflow ----
+    RulePredicate:
+      type: object
+      properties:
+        field: { type: string, minLength: 1 }
+        operator: { type: string, description: RuleOperator enum value. }
+        value: {}
+        conjunction: { type: string, description: RuleConjunction enum value. }
+      required: [field, operator, value, conjunction]
+    CreateRuleRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        event: { type: string, description: RuleEvent enum value. }
+        active: { type: boolean }
+        steps:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              order: { type: integer, minimum: 0 }
+              query:
+                type: array
+                minItems: 1
+                items: { $ref: '#/components/schemas/RulePredicate' }
+            required: [order, query]
+        actions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              type: { type: string, description: RuleActionType enum value. }
+              config: { type: object }
+            required: [type]
+      required: [name, event, steps, actions]
+    RunRuleRequest:
+      type: object
+      properties:
+        facts: { type: object }
+        dryRun: { type: boolean }
+      required: [facts]
+
+  responses:
+    BadRequest:
+      description: Validation error (E_VALIDATION).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Missing/invalid token or required headers (E_UNAUTHORIZED).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Authenticated but lacks the required permission, or ABAC policy denied (E_FORBIDDEN).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Resource not found or RLS-invisible (E_NOT_FOUND).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: Illegal state transition or uniqueness conflict (E_CONFLICT).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ServerError:
+      description: Unexpected server error (E_SYSTEM / E_DATABASE).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    GatewayError:
+      description: Upstream service unreachable, refused, or timed out (502 / 503 / 504; E_BAD_GATEWAY, E_UPSTREAM_UNAVAILABLE, E_GATEWAY_TIMEOUT).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+paths:
+  # ===================== HEALTH =====================
+  /health:
+    get:
+      tags: [health]
+      summary: Gateway / service liveness + readiness probe
+      description: >
+        No auth, no context middleware. `?details=true` additionally pings the DB
+        and cache and returns 503 if either is down. The gateway exposes the same
+        `/health`; each service returns its own `service` name.
+      security: []
+      parameters:
+        - name: details
+          in: query
+          required: false
+          schema: { type: string, enum: ['true'] }
+      responses:
+        '200':
+          description: Service healthy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+        '503':
+          description: Degraded (DB or cache down) when details=true.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+
+  # ===================== USER-MANAGEMENT =====================
+  /user-management/v1/auth/register:
+    post:
+      tags: [user-management]
+      summary: Register a new user (public)
+      description: Public — no token required. Returns the created principal.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: User created.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/auth/login:
+    post:
+      tags: [user-management]
+      summary: Authenticate and issue a Bearer JWT (public)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated — returns token + principal.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/auth/me:
+    get:
+      tags: [user-management]
+      summary: Current authenticated principal
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: The resolved principal for the bearer token.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/roles:
+    get:
+      tags: [user-management]
+      summary: List roles
+      description: Requires permission `role.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Roles for the tenant.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [user-management]
+      summary: Create a role
+      description: Requires permission `role.create`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoleRequest' }
+      responses:
+        '201':
+          description: Role created.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/users/{userId}/role:
+    post:
+      tags: [user-management]
+      summary: Assign a role to a user
+      description: Requires permission `role.assign`.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRoleRequest' }
+      responses:
+        '200':
+          description: Role assigned.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/permissions:
+    get:
+      tags: [user-management]
+      summary: List the global permission catalog
+      description: Requires permission `permission.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Permission catalog.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/tenant/config:
+    get:
+      tags: [user-management]
+      summary: List tenant config entries
+      description: Requires permission `tenant.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Tenant config entries.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/tenant/config/{key}:
+    put:
+      tags: [user-management]
+      summary: Set a tenant config value
+      description: Requires permission `tenant.manage`.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetConfigRequest' }
+      responses:
+        '200':
+          description: Config value set.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/tenant/features:
+    get:
+      tags: [user-management]
+      summary: List feature flags
+      description: Requires permission `tenant.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Feature flags.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /user-management/v1/tenant/features/{flag}:
+    put:
+      tags: [user-management]
+      summary: Toggle a feature flag
+      description: Requires permission `tenant.manage`.
+      parameters:
+        - name: flag
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetFlagRequest' }
+      responses:
+        '200':
+          description: Flag set.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ===================== EXPENSE =====================
+  /expense/v1/expenses:
+    post:
+      tags: [expense]
+      summary: Add a standalone expense item
+      description: Requires permission `expense.report.create`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateExpenseRequest' }
+      responses:
+        '201':
+          description: Expense item created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports:
+    post:
+      tags: [expense]
+      summary: Create an expense report (OPEN)
+      description: Requires permission `expense.report.create`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateReportRequest' }
+      responses:
+        '201':
+          description: Report created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [expense]
+      summary: List expense reports (row-scoped, paged)
+      description: Requires permission `expense.report.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: Paged reports.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagedEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/expenses:
+    post:
+      tags: [expense]
+      summary: Attach an expense item to a report
+      description: >
+        OPEN, submitter only. Requires permission `expense.report.update` (ABAC
+        resource = report). Provide either an existing `expenseId` or an inline amount.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttachExpenseRequest' }
+      responses:
+        '200':
+          description: Item attached.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/submit:
+    post:
+      tags: [expense]
+      summary: Submit a report (OPEN to APPROVALS)
+      description: Requires permission `expense.report.submit` (ABAC resource = report). Emits expense.submitted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitRequest' }
+      responses:
+        '200':
+          description: Report submitted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/decisions:
+    post:
+      tags: [expense]
+      summary: Record an approval decision (engine-backed)
+      description: >
+        Canonical engine-backed decision surface. Requires permission
+        `expense.report.approve` (ABAC resource = report; amount-cap policy denies
+        over-cap approvals). On chain completion the report advances
+        (approved to APPROVED + ERP push, rejected to REJECTED).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecideRequest' }
+      responses:
+        '200':
+          description: Decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/approvals/pending:
+    get:
+      tags: [expense]
+      summary: Current user's pending approval slots
+      description: Requires permission `expense.report.approve` (only approvers have an inbox).
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Pending approval slots.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/approve:
+    post:
+      tags: [expense]
+      summary: Approve a report (alias for decisions{approved})
+      description: >
+        Backward-compatible alias for POST /reports/{id}/decisions
+        {decision:'approved'}. Requires permission `expense.report.approve`
+        (ABAC amount-cap applies).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveRequest' }
+      responses:
+        '200':
+          description: Report approved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/reject:
+    post:
+      tags: [expense]
+      summary: Reject a report (APPROVALS to REJECTED)
+      description: Requires permission `expense.report.reject` (ABAC resource = report). Emits expense.rejected.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectRequest' }
+      responses:
+        '200':
+          description: Report rejected.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/reimburse:
+    post:
+      tags: [expense]
+      summary: Reimburse a report (APPROVED to REIMBURSED)
+      description: Finance/admin only. Requires permission `expense.report.reimburse` (ABAC resource = report).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReimburseRequest' }
+      responses:
+        '200':
+          description: Report reimbursed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/recall:
+    post:
+      tags: [expense]
+      summary: Recall a still-pending report (APPROVALS to OPEN)
+      description: >
+        Submitter/admin. Reuses permission `expense.report.submit` (ABAC resource =
+        report). Rejected if already APPROVED/REIMBURSED.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecallRequest' }
+      responses:
+        '200':
+          description: Report recalled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/comments:
+    post:
+      tags: [expense]
+      summary: Add a comment to a report's thread
+      description: Requires permission `expense.report.view` (ABAC resource = report).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddCommentRequest' }
+      responses:
+        '201':
+          description: Comment added.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [expense]
+      summary: List a report's comment thread (oldest first)
+      description: Requires permission `expense.report.view` (ABAC resource = report).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Comment thread.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}/detail:
+    get:
+      tags: [expense]
+      summary: Full report detail (header + items + approvals + comments + timeline)
+      description: Requires permission `expense.report.view` (ABAC resource = report).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Report detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /expense/v1/reports/{id}:
+    get:
+      tags: [expense]
+      summary: Get a single report by id
+      description: Requires permission `expense.report.view` (ABAC resource = report). 404 if RLS-invisible.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Report.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ===================== INVOICE =====================
+  /invoice/v1/invoices:
+    post:
+      tags: [invoice]
+      summary: Create an invoice
+      description: Requires permission `invoice.create`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInvoiceRequest' }
+      responses:
+        '201':
+          description: Invoice created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [invoice]
+      summary: List invoices (paged, filterable)
+      description: Requires permission `invoice.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, description: InvoiceStatus enum value. }
+        - name: vendorId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Paged invoices.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagedEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /invoice/v1/invoices/approvals/pending:
+    get:
+      tags: [invoice]
+      summary: Current user's pending invoice approval slots
+      description: Requires permission `invoice.approve`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Pending approval slots.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /invoice/v1/invoices/{id}:
+    get:
+      tags: [invoice]
+      summary: Get a single invoice by id
+      description: Requires permission `invoice.view`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Invoice.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /invoice/v1/invoices/{id}/submit:
+    post:
+      tags: [invoice]
+      summary: Submit an invoice
+      description: Requires permission `invoice.update`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Invoice submitted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /invoice/v1/invoices/{id}/decisions:
+    post:
+      tags: [invoice]
+      summary: Record an approval decision (engine-backed)
+      description: >
+        Canonical engine-backed decision surface. Requires permission
+        `invoice.approve`. On chain completion the invoice advances (approved to
+        Approved + ERP outbox push, rejected to Rejected).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecideInvoiceRequest' }
+      responses:
+        '200':
+          description: Decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /invoice/v1/invoices/{id}/approve:
+    post:
+      tags: [invoice]
+      summary: Approve an invoice (alias for decisions{approved})
+      description: Backward-compatible alias. Requires permission `invoice.approve`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveInvoiceRequest' }
+      responses:
+        '200':
+          description: Invoice approved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ===================== PAYROLL =====================
+  /payroll/v1/employees:
+    post:
+      tags: [payroll]
+      summary: Create an employee
+      description: Requires permission `payroll.employee.manage`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEmployeeRequest' }
+      responses:
+        '201':
+          description: Employee created.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [payroll]
+      summary: List employees
+      description: >
+        Requires permission `payroll.employee.view`. Field-level obligation:
+        sensitive PII (bank account / national id) is cleared unless the principal
+        also holds `payroll.sensitive.read`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Employees (PII masked unless payroll.sensitive.read held).
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /payroll/v1/pay-runs:
+    post:
+      tags: [payroll]
+      summary: Create a pay run
+      description: Requires permission `payroll.payrun.create`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePayRunRequest' }
+      responses:
+        '201':
+          description: Pay run created.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /payroll/v1/pay-runs/{id}/calculate:
+    post:
+      tags: [payroll]
+      summary: Calculate a pay run
+      description: Requires permission `payroll.payrun.calculate`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Pay run calculated.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /payroll/v1/pay-runs/{id}/decisions:
+    post:
+      tags: [payroll]
+      summary: Record a pay-run approval decision (engine-backed)
+      description: >
+        Canonical engine-backed decision surface. Requires permission
+        `payroll.payrun.approve`. On completion: approved to Approved + PayRunApproved
+        event; rejected leaves the run Calculated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayRunDecideRequest' }
+      responses:
+        '200':
+          description: Decision recorded.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /payroll/v1/pay-runs/approvals/pending:
+    get:
+      tags: [payroll]
+      summary: Current user's pending pay-run approval slots
+      description: Requires permission `payroll.payrun.approve`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Pending approval slots.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /payroll/v1/pay-runs/{id}/approve:
+    post:
+      tags: [payroll]
+      summary: Approve a pay run (alias for decisions{approved})
+      description: Backward-compatible alias. Requires permission `payroll.payrun.approve`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayRunApproveRequest' }
+      responses:
+        '200':
+          description: Pay run approved.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /payroll/v1/pay-runs/{id}/disburse:
+    post:
+      tags: [payroll]
+      summary: Disburse an approved pay run (idempotent)
+      description: >
+        Requires permission `payroll.payrun.disburse`. Honors an optional
+        `Idempotency-Key` header so a retried disbursement is not double-applied.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+        - $ref: '#/components/parameters/IdempotencyHeader'
+      responses:
+        '200':
+          description: Pay run disbursed.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ===================== REPORTING =====================
+  /reporting/v1/report-definitions:
+    post:
+      tags: [reporting]
+      summary: Create a report definition
+      description: Requires permission `report.define`. The spec is validated as data (never raw SQL).
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDefinitionRequest' }
+      responses:
+        '201':
+          description: Definition created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [reporting]
+      summary: List report definitions (paged)
+      description: Requires permission `report.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: Paged definitions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagedEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /reporting/v1/report-runs:
+    post:
+      tags: [reporting]
+      summary: Enqueue an asynchronous report run
+      description: >
+        Requires permission `report.run`. Returns 202 + { runId } with a Location
+        header to poll GET /report-runs/{id}.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRunRequest' }
+      responses:
+        '202':
+          description: Run enqueued.
+          headers:
+            Location:
+              description: URL to poll the run status.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /reporting/v1/report-runs/{id}:
+    get:
+      tags: [reporting]
+      summary: Get report run status + artifact url
+      description: Requires permission `report.view`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Run status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ===================== WORKFLOW =====================
+  /workflow/v1/rules:
+    post:
+      tags: [workflow]
+      summary: Create a rule
+      description: Requires permission `rule.create`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRuleRequest' }
+      responses:
+        '201':
+          description: Rule created.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [workflow]
+      summary: List rules (paged)
+      description: Requires permission `rule.view`.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: Rules.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /workflow/v1/rules/{id}:
+    get:
+      tags: [workflow]
+      summary: Get a single rule by id
+      description: Requires permission `rule.view`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Rule.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /workflow/v1/rules/{id}/run:
+    post:
+      tags: [workflow]
+      summary: Run / dry-run a rule against supplied facts
+      description: Requires permission `rule.run`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunRuleRequest' }
+      responses:
+        '200':
+          description: Rule evaluation result.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ===================== NOTIFICATION =====================
+  /notification/v1/notifications:
+    get:
+      tags: [notification]
+      summary: List the caller's in-app notifications (paged)
+      description: >
+        Requires permission `notification.view`. RLS-scoped to the caller's own
+        notifications within their tenant.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: Notifications.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /notification/v1/notifications/{id}/read:
+    post:
+      tags: [notification]
+      summary: Mark a notification as read
+      description: Requires permission `notification.view`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Marked read.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
