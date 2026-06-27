@@ -17,6 +17,33 @@ describe('audit hash chain', () => {
     expect(computeAuditHash(GENESIS_HASH, entry())).toEqual(computeAuditHash(GENESIS_HASH, entry()));
   });
 
+  it('canonicalizes nested JSON object key order before hashing', () => {
+    const appOrder = entry({
+      details: {
+        entity: 'expense',
+        ruleId: 'expense.approve',
+        status: 'synced',
+        externalId: 'ledger_one-exp-1',
+        connectorKind: 'ledger_one',
+        idempotencyKey: 'exp-1',
+      },
+      permissions: [{ action: 'b', domain: 'expense' }, { domain: 'invoice', action: 'a' }],
+    });
+    const jsonbOrder = entry({
+      details: {
+        connectorKind: 'ledger_one',
+        entity: 'expense',
+        externalId: 'ledger_one-exp-1',
+        idempotencyKey: 'exp-1',
+        ruleId: 'expense.approve',
+        status: 'synced',
+      },
+      permissions: [{ domain: 'expense', action: 'b' }, { action: 'a', domain: 'invoice' }],
+    });
+
+    expect(computeAuditHash(GENESIS_HASH, appOrder)).toEqual(computeAuditHash(GENESIS_HASH, jsonbOrder));
+  });
+
   it('changes when any field changes', () => {
     const base = computeAuditHash(GENESIS_HASH, entry());
     expect(computeAuditHash(GENESIS_HASH, entry({ action: 'role.created' }))).not.toEqual(base);

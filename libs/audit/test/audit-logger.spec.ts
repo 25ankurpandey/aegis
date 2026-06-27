@@ -176,6 +176,44 @@ describe('AuditLogger.verifyChain', () => {
     await expect(AuditLogger.verifyChain(TX)).resolves.toEqual({ valid: true, count: 2 });
   });
 
+  it('accepts JSONB-style object key reordering when verifying rows', async () => {
+    const db = makeFakeDb();
+    await AuditLogger.record(
+      {
+        action: AuditAction.RecordUpdated,
+        outcome: AuditOutcome.Success,
+        details: {
+          entity: 'expense',
+          ruleId: 'expense.approve',
+          status: 'synced',
+          externalId: 'ledger_one-exp-1',
+          connectorKind: 'ledger_one',
+          idempotencyKey: 'exp-1',
+        },
+        permissions: [{ action: 'b', domain: 'expense' }],
+      },
+      TX,
+    );
+    db.commit();
+
+    const jsonbReorderedRow = {
+      ...db.rows[0],
+      details: {
+        connectorKind: 'ledger_one',
+        entity: 'expense',
+        externalId: 'ledger_one-exp-1',
+        idempotencyKey: 'exp-1',
+        ruleId: 'expense.approve',
+        status: 'synced',
+      },
+      permissions: [{ domain: 'expense', action: 'b' }],
+    };
+    const findAll = jest.fn(async () => [{ get: () => jsonbReorderedRow as unknown as Record<string, unknown> }]);
+    mockedGetAuditModel.mockReturnValue({ findAll });
+
+    await expect(AuditLogger.verifyChain(TX)).resolves.toEqual({ valid: true, count: 1 });
+  });
+
   it('flags the breaking entry when a historical hash is tampered', async () => {
     const db = makeFakeDb();
     await AuditLogger.record(input(AuditAction.RoleCreated), TX);

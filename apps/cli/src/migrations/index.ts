@@ -29,6 +29,7 @@ import * as employeeUserBinding from './0027_employee_user_binding';
 import * as identityAdminSurfaces from './0028_identity_admin_surfaces';
 import * as rlsPermissiveBase from './0029_rls_permissive_base';
 import * as eventOutboxRlsSafeTenantCast from './0030_event_outbox_rls_safe_tenant_cast';
+import * as auditHashCanonicalization from './0031_audit_hash_canonicalization';
 
 /** Ordered list of schema migrations (explicit imports so the bundled CLI can run them). */
 export const migrations: MigrationModule[] = [
@@ -62,4 +63,5 @@ export const migrations: MigrationModule[] = [
   { name: '0028_identity_admin_surfaces', up: identityAdminSurfaces.up, down: identityAdminSurfaces.down },
   { name: '0029_rls_permissive_base', up: rlsPermissiveBase.up, down: rlsPermissiveBase.down },
   { name: '0030_event_outbox_rls_safe_tenant_cast', up: eventOutboxRlsSafeTenantCast.up, down: eventOutboxRlsSafeTenantCast.down },
+  { name: '0031_audit_hash_canonicalization', up: auditHashCanonicalization.up, down: auditHashCanonicalization.down },
 ];

@@ -14,6 +14,19 @@ export interface AuditPayload {
   permissions: unknown;
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value instanceof Date) return value.toISOString();
+  if (!value || typeof value !== 'object') return value;
+
+  return Object.keys(value as Record<string, unknown>)
+    .sort()
+    .reduce<Record<string, unknown>>((acc, key) => {
+      acc[key] = canonicalize((value as Record<string, unknown>)[key]);
+      return acc;
+    }, {});
+}
+
 /**
  * Each entry's hash depends on the previous entry's hash + a canonical serialization of its fields,
  * so altering any historical entry breaks every subsequent hash (tamper-evidence).
@@ -27,8 +40,8 @@ export function computeAuditHash(prevHash: string, payload: AuditPayload): strin
     payload.outcome,
     payload.resource_type,
     payload.resource_id,
-    payload.details,
-    payload.permissions,
+    canonicalize(payload.details),
+    canonicalize(payload.permissions),
   ]);
   return createHash('sha256').update(`${prevHash}|${canonical}`).digest('hex');
 }
