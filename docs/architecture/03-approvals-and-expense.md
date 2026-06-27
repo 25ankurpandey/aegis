@@ -275,14 +275,14 @@ sequenceDiagram
     participant RES as PolicyApproverResolver
     participant DB as record_approvers / approvals (RLS)
     participant OBX as transactional outbox / bus
-    participant NOTE as notification consumer
+    participant NOTIF as notification consumer
     participant ERP as ConnectorRegistry (LedgerOne)
 
     Submitter->>EXP: submitReport(reportId)
     EXP->>EXP: OPEN → APPROVALS (assertTransition, submitter)
     EXP->>OBX: stage ExpenseSubmitted (same RLS tx)
     EXP->>ENG: requestApproval(ExpenseReport, reportId, amountMinor, currency, requestedBy)
-    Note over ENG: own RLS tx; idempotent (existing live chain ⇒ no-op)
+    Note over ENG: own RLS tx, idempotent (existing live chain ⇒ no-op)
     ENG->>RES: resolve(policy, ctx)
     RES->>DB: read approval_hierarchy / approver_group_members
     RES-->>ENG: ordered ResolvedSlots (thresholds, manager/group expansion, SoD)
@@ -294,20 +294,20 @@ sequenceDiagram
     else chain has slots
         ENG->>OBX: stage ApprovalRequested (each lowest-level slot)
         ENG-->>EXP: chain
-        OBX-->>NOTE: ApprovalRequested → notify approvers
+        OBX-->>NOTIF: ApprovalRequested → notify approvers
     end
 
     Approver->>EXP: decideReport(reportId, {decision, comment})
     EXP->>ENG: getStatus (BUG-0005 self-heal check)
     EXP->>ENG: decide(ExpenseReport, reportId, approverId, decision)
     Note over ENG: advisory lock (BUG-0004) → no-double-vote guard
-    ENG->>DB: append immutable vote (approvals); set slot status
+    ENG->>DB: append immutable vote (approvals), set slot status
     alt rejected
         ENG->>DB: skipRemaining (short-circuit)
         ENG->>OBX: stage ApprovalCompleted{rejected}
     else approved & level quorum met
         alt higher level remains
-            ENG->>DB: skipRemainingAtLevel; advance
+            ENG->>DB: skipRemainingAtLevel, advance
             ENG->>OBX: stage ApprovalRequested (next level)
         else last level
             ENG->>OBX: stage ApprovalCompleted{approved}

@@ -23,7 +23,7 @@ service-to-service security, dynamic role/permission management, and auditabilit
 **Non-functional.** Tenant isolation that an application bug cannot breach (DB-enforced RLS);
 fail-closed authorization; short-lived tokens; horizontal scalability (stateless services, one
 image, autoscaling); observability (structured logs + correlation ids); SOC2/GDPR-aligned
-tamper-evident audit. See [`docs/01-architecture.md`](docs/01-architecture.md).
+tamper-evident audit. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 2. High-level architecture
 
@@ -33,7 +33,7 @@ internally layered Controller → Service → Repository → Model with **Invers
 PDP/PEP), `@aegis/db` (RLS), `@aegis/events` (bus), `@aegis/connectors` (ERP), and
 `@aegis/audit`. Request path: **Gateway → context + header validation → authenticate → authorize
 (PDP) → RLS-scoped query → handler → audit + events**. Full diagrams:
-[`docs/01-architecture.md`](docs/01-architecture.md).
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 3. Authentication & authorization flow
 
@@ -85,7 +85,7 @@ migrations in [`apps/cli/src/migrations`](apps/cli/src/migrations) with RLS on e
 Stateless services behind the gateway; one image, autoscaled (Cloud Run min/max); PDP decisions are
 cacheable with a short TTL (fail-closed); the event bus uses a transactional outbox; RLS is indexed
 with `tenant_id` leading. Reporting is CQRS-lite (read models). See
-[`docs/01-architecture.md`](docs/01-architecture.md) and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 [`docs/09-deployment-and-ops.md`](docs/09-deployment-and-ops.md).
 
 ## 9. Security & compliance
@@ -110,8 +110,8 @@ See [`docs/09-deployment-and-ops.md`](docs/09-deployment-and-ops.md).
 
 | Required | Where |
 |---|---|
-| Functional + non-functional requirements | §1 · [`docs/01-architecture.md`](docs/01-architecture.md) |
-| High-level architecture | §2 · [`docs/01-architecture.md`](docs/01-architecture.md) · [interactive](docs/interactive/index.html) |
+| Functional + non-functional requirements | §1 · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| High-level architecture | §2 · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [interactive](docs/interactive/index.html) |
 | Authn/authz flow | §3 · [`docs/05-authn-authz-flow.md`](docs/05-authn-authz-flow.md) |
 | Multi-tenant isolation | §4 · [`docs/04-multi-tenancy.md`](docs/04-multi-tenancy.md) |
 | Access-control model | §5 · [`docs/03-access-control-model.md`](docs/03-access-control-model.md) |

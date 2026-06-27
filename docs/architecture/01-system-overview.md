@@ -137,13 +137,18 @@ workers; production uses the compose/container model above.
 
 ### Topology
 
+The full topology has too many edges to read as one chart, so it is split into **four focused
+views** — north-south edge, data plane, async eventing, and the policy-reload bus. Each is
+independently legible; together they are the complete picture.
+
+#### (a) North-south edge — client → gateway → API services
+
+*Every request enters through the gateway, which forwards (without authorizing) to the owning service.*
+
 ```mermaid
 flowchart TB
   client([Client / CLI])
-
-  subgraph edge[Edge]
-    gw[gateway :4000<br/>mint X-Correlation-Id<br/>validate ctx headers<br/>reverse proxy]
-  end
+  gw[gateway :4000<br/>mint X-Correlation-Id<br/>validate ctx headers<br/>reverse proxy]
 
   subgraph api[API pods - PROCESS_TYPE=api]
     um[user-management :4001<br/>+ PAP]
@@ -155,33 +160,62 @@ flowchart TB
     inv[invoice :4007]
   end
 
+  client -->|"HTTPS /<svc>/..."| gw
+  gw -->|"forward + ctx headers + Bearer"| api
+```
+
+#### (b) Data plane — services + workers → Postgres (RLS) / Redis
+
+*All pods reach the single Postgres through `withTenantTransaction` so RLS is in force; Redis is cache + idempotency.*
+
+```mermaid
+flowchart TB
+  apis["7 API services<br/>(user-management … invoice)"]
+  workers["3 workers<br/>(expense / workflow / notification)"]
+
+  pg[(PostgreSQL<br/>single DB + RLS<br/>role aegis_app NOBYPASSRLS)]
+  redis[(Redis<br/>cache + idempotency)]
+
+  apis -->|"withTenantTransaction<br/>(SET LOCAL app.current_tenant)"| pg
+  workers -->|"withTenantTransaction"| pg
+  apis -.->|"cache / idempotency"| redis
+```
+
+#### (c) Async eventing — producer → outbox → relay → Kafka → consumers
+
+*A domain event is staged in the outbox in the business txn, drained by the in-process relay, then consumed per service.*
+
+```mermaid
+flowchart TB
+  producers["API / producer pods<br/>(in-process outbox relay)"]
+  pg[(event_outbox<br/>in PostgreSQL)]
+  kafka{{Kafka<br/>domain-event topics + .dlq}}
+
   subgraph workers[Worker pods - PROCESS_TYPE=worker]
     expw[expense-worker]
     wfw[workflow-worker]
     notifw[notification-worker]
   end
 
-  subgraph infra[Infrastructure]
-    pg[(PostgreSQL<br/>single DB + RLS<br/>role aegis_app NOBYPASSRLS)]
-    redis[(Redis<br/>cache + policy-reload pub/sub)]
-    kafka{{Kafka<br/>domain-event topics}}
-  end
-
-  client -->|"HTTPS /<svc>/..."| gw
-  gw -->|"forward + ctx headers + Bearer"| um & exp & pay & rep & wf & notif & inv
-
-  um & exp & pay & rep & wf & notif & inv -->|"withTenantTransaction<br/>(SET LOCAL app.current_tenant)"| pg
-  expw & wfw & notifw -->|"withTenantTransaction"| pg
-
-  um & exp & pay & rep & wf & notif & inv -. "stage event in event_outbox (same txn)" .-> pg
-  um & exp & pay & rep & wf & notif & inv == "in-process relay drains outbox -> publish" ==> kafka
+  producers -. "stage event in event_outbox (same txn)" .-> pg
+  producers == "in-process relay drains outbox -> publish" ==> kafka
   kafka -- "consume (group per service)" --> expw & wfw & notifw
+```
+
+#### (d) Policy-reload bus — PAP write fans out via Redis pub/sub
+
+*A PAP write projects into the policy table, then PUBLISHes a reload every running pod SUBSCRIBEs to.*
+
+```mermaid
+flowchart TB
+  um["user-management<br/>(PAP)"]
+  pg[(policy table<br/>in PostgreSQL)]
+  redis[(Redis<br/>policy-reload pub/sub)]
+  pods["all API pods<br/>(rebuild enforcer)"]
 
   um <-->|"Casbin enforcer build-once<br/>policy table"| pg
   um == "PAP write -> PUBLISH reload" ==> redis
-  redis -- "SUBSCRIBE policy-reload" --> um & exp & pay & rep & wf & notif & inv
-
-  um & exp & pay & rep & wf & notif & inv -.->|"cache / idempotency"| redis
+  redis -- "SUBSCRIBE policy-reload" --> pods
 ```
 
 Key invariants visible in the code:
@@ -219,7 +253,7 @@ sequenceDiagram
   GW->>EXP: POST /expense/reports<br/>X-Tenant-Id, X-Correlation-Id, X-Caller=gateway, Bearer
   Note over EXP: contextMiddleware re-opens ALS scope<br/>from propagated headers (no mint -> fail-closed)
   EXP->>PEP: authenticate()
-  PEP->>PEP: jwt.verify(token); assert claims.tenant_id == X-Tenant-Id
+  PEP->>PEP: jwt.verify(token), assert claims.tenant_id == X-Tenant-Id
   PEP->>EXP: set req.principal + ctx.userId/roles
   EXP->>PEP: authorize('expense.submit', {...})
   PEP->>CAS: enforce(role|userId, tenantId, 'expense.submit')
@@ -229,7 +263,7 @@ sequenceDiagram
   end
   PEP->>EXP: next() (+ ABAC/scope obligations)
   EXP->>PG: withTenantTransaction(...)
-  Note over PG: SET LOCAL app.current_tenant = <tenantId><br/>(transaction-local; RLS now enforced)
+  Note over PG: SET LOCAL app.current_tenant = <tenantId><br/>(transaction-local, RLS now enforced)
   EXP->>PG: INSERT expense report (RLS WITH CHECK)
   EXP->>OBX: stageOutboxEvent(expense.submitted, t)  // SAME txn
   PG-->>EXP: COMMIT (write + event atomic)

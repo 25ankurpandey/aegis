@@ -5,7 +5,7 @@
 > embedded in every service, the PAP that administers policy at runtime, and the PIP that
 > feeds attributes in. It is the canonical companion to [`SPEC.md`](../SPEC.md) §2 and §10.
 >
-> Related docs: [`01-architecture`](01-architecture.md) ·
+> Related docs: [`ARCHITECTURE`](ARCHITECTURE.md) ·
 > [`04-multi-tenancy`](04-multi-tenancy.md) ·
 > [`05-authn-authz-flow`](05-authn-authz-flow.md) ·
 > [`06-service-to-service`](06-service-to-service.md) ·

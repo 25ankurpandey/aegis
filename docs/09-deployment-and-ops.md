@@ -5,11 +5,10 @@
 > de-branded "single image, many roles" deployment locked in [`../SPEC.md`](../SPEC.md) §1 and §7.
 > Where this doc and `SPEC.md` disagree, **`SPEC.md` wins** (and §10 wins over §0–§9).
 
-Related reading: [`01-architecture.md`](01-architecture.md) (the `apps/*` deployables vs `libs/*`
+Related reading: [`ARCHITECTURE.md`](ARCHITECTURE.md) (the `apps/*` deployables vs `libs/*`
 split), [`04-multi-tenancy.md`](04-multi-tenancy.md) (the RLS non-owner role this doc provisions),
-[`06-service-to-service.md`](06-service-to-service.md) (the context/header propagation that the
-correlation-id logging here depends on), and [`research/terraform-iac.md`](research/terraform-iac.md)
-(the showcase cloud IaC that schedules the artifacts described below).
+and [`06-service-to-service.md`](06-service-to-service.md) (the context/header propagation that the
+correlation-id logging here depends on).
 
 ---
 
@@ -376,7 +375,7 @@ prefix (`/aegis/dev/…` vs `/aegis/production/…`) selects the secret set. Con
 - **CI never sees a runtime secret.** Registry creds and the param-store read role come from CI
   variables / OIDC, not from the repo (see the header of [`../.gitlab-ci.yml`](../.gitlab-ci.yml)).
 - Secrets are resolved through the same config layer described in
-  [`research/service-core.md`](research/service-core.md); committed `.env` dummy values (§1.3) are a
+  [`architecture/04-services.md`](architecture/04-services.md); committed `.env` dummy values (§1.3) are a
   *local-only* fallback that real env injection overrides.
 
 This is the cloud-key-proxy posture in practice: keyed third-party APIs (Places, ERP connectors,
@@ -519,8 +518,7 @@ flowchart LR
 ### 7.4 Config / secret-checksum rolling restarts
 
 A service must restart not only when its **image** changes but when its **config or secrets** change
-under a stable image. The deploy layer (the Terraform task definitions in
-[`research/terraform-iac.md`](research/terraform-iac.md)) injects a `CONFIG_CHECKSUM` env var = a hash
+under a stable image. The deploy layer (the Terraform task definitions in the showcase IaC) injects a `CONFIG_CHECKSUM` env var = a hash
 of the resolved param-store values + non-secret config for that env. When a secret rotates or config
 changes, the checksum changes, which mutates the task definition, which triggers a rolling
 replacement — even though the image tag is unchanged. This makes secret rotation a first-class,
@@ -544,7 +542,7 @@ the same image:
   horizontal scaling is safe and replicas are interchangeable.
 
 The concrete min/max instance counts, the managed-instance-group / container-service target, and the
-scaling policies live in the showcase IaC — [`research/terraform-iac.md`](research/terraform-iac.md).
+scaling policies live in the showcase IaC.
 
 ---
 
@@ -616,9 +614,8 @@ gets **better** as the platform adds services, which is exactly the trajectory A
 
 ---
 
-*See also:* [`01-architecture.md`](01-architecture.md) ·
+*See also:* [`ARCHITECTURE.md`](ARCHITECTURE.md) ·
 [`04-multi-tenancy.md`](04-multi-tenancy.md) ·
 [`06-service-to-service.md`](06-service-to-service.md) ·
-[`research/terraform-iac.md`](research/terraform-iac.md) ·
-[`research/service-core.md`](research/service-core.md) ·
+[`architecture/04-services.md`](architecture/04-services.md) ·
 [`../SPEC.md`](../SPEC.md) §7 & §10.

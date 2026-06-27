@@ -384,7 +384,7 @@ sequenceDiagram
         ACC->>Eng: requestApproval (materialise chain under active policy — idempotent bind)
     end
     opt autoApprove
-        ACC->>Eng: requestApproval (ensure a chain exists; empty chain auto-completes)
+        ACC->>Eng: requestApproval (ensure a chain exists, empty chain auto-completes)
         loop until chain.completed (bounded by slot count)
             ACC->>Eng: getStatus(recordType, recordId)
             ACC->>Eng: decide(slot.approver_id, Approved, comment=reason) for each pending slot

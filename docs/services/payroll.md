@@ -9,7 +9,7 @@
 > segregation-of-duties (maker-checker)** baked into the domain itself.
 >
 > Authoritative companions: [`SPEC.md`](../../SPEC.md) §0, §2.5, §5, §10 ·
-> Related docs: [`01-architecture`](../01-architecture.md) ·
+> Related docs: [`ARCHITECTURE`](../ARCHITECTURE.md) ·
 > [`03-access-control-model`](../03-access-control-model.md) ·
 > [`04-multi-tenancy`](../04-multi-tenancy.md) ·
 > [`05-authn-authz-flow`](../05-authn-authz-flow.md) ·

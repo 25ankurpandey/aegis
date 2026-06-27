@@ -103,7 +103,7 @@ controllers/services/repositories/models layering, Joi validators, the central e
 middleware, and the `authenticate → authorize(permission) → handler` chain on every
 route (see [`../02-patterns.md`](../02-patterns.md) and
 [`../08-api-conventions.md`](../08-api-conventions.md)). It shares
-[`@aegis/service-core`](../research/service-core.md) and
+[`@aegis/service-core`](../architecture/04-services.md) and
 [`@aegis/access-control`](../03-access-control-model.md), enforces tenant RLS via
 [`@aegis/db`](../04-multi-tenancy.md), and runs from the single multi-purpose image with
 `PROCESS_TYPE=api`.

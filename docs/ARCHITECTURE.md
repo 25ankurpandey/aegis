@@ -25,13 +25,19 @@ the workers, and the migrations all run byte-identical bytes.
 
 ## Master system diagram
 
+The whole system is one mental model, but a single flowchart that shows every edge at once is
+unreadable. Below it is split into **five focused views**, each independently legible: the
+north-south edge, the data plane, async eventing, the Casbin policy-reload bus, and the
+`PROCESS_TYPE` pod roles. Read them in order for the full picture.
+
+### (a) Edge — north-south request path
+
+*Client always enters through the gateway, which proxies (but does not authorize) to the owning API service.*
+
 ```mermaid
 flowchart TB
   client([Client / CLI])
-
-  subgraph edge[Edge]
-    gw["gateway :4000<br/>mint X-Correlation-Id<br/>validate ctx headers<br/>reverse proxy (no authz)"]
-  end
+  gw["gateway :4000<br/>mint X-Correlation-Id<br/>validate ctx headers<br/>reverse proxy (no authz)"]
 
   subgraph api["API pods — PROCESS_TYPE=api"]
     um["user-management :4001<br/>IdP + PAP"]
@@ -43,45 +49,92 @@ flowchart TB
     inv["invoice :4007"]
   end
 
-  subgraph workers["Worker pods — PROCESS_TYPE=worker"]
+  client -->|"HTTPS /&lt;svc&gt;/..."| gw
+  gw -->|"forward + ctx headers + Bearer"| api
+```
+
+### (b) Data plane — every service talks to one Postgres (RLS) + Redis
+
+*All API and worker pods reach the same Postgres through `withTenantTransaction` (RLS enforced); Redis is cache + idempotency.*
+
+```mermaid
+flowchart TB
+  subgraph pods["API + worker pods"]
+    apis["7 API services<br/>(user-management … invoice)"]
+    workers["3 workers<br/>(expense / workflow / notification)"]
+  end
+
+  pg[("PostgreSQL<br/>single DB + RLS<br/>role aegis_app NOBYPASSRLS")]
+  redis[("Redis<br/>cache + idempotency")]
+
+  apis -->|"withTenantTransaction<br/>SET LOCAL app.current_tenant"| pg
+  workers -->|"withTenantTransaction"| pg
+  apis -.->|"cache / idempotency"| redis
+```
+
+### (c) Async eventing — producer → outbox → relay → Kafka → consumer
+
+*No dual-write: the event is staged in `event_outbox` in the business txn, then drained at-least-once by the in-process relay.*
+
+```mermaid
+flowchart TB
+  producer["Producer pod<br/>(any API service)"]
+  pg[("event_outbox<br/>in PostgreSQL")]
+  rly["initOutboxRelay()<br/>in-process in every producer pod<br/>poll → publish → mark"]
+  kafka{{"Kafka<br/>domain-event topics + .dlq"}}
+
+  subgraph consumers["Worker pods — one group per service"]
     expw[expense-worker]
     wfw["workflow-worker<br/>(rules + connector-sync)"]
     notifw[notification-worker]
   end
 
-  subgraph relay["Outbox relay — in-process in every producer pod"]
-    rly["initOutboxRelay()<br/>poll → publish → mark"]
-  end
-
-  subgraph infra[Infrastructure]
-    pg[("PostgreSQL<br/>single DB + RLS<br/>role aegis_app NOBYPASSRLS")]
-    redis[("Redis<br/>cache + policy-reload pub/sub")]
-    kafka{{"Kafka<br/>domain-event topics + .dlq"}}
-  end
-
   ext[("ERP connectors<br/>LedgerOne / Finovo / AcctBridge")]
 
-  client -->|"HTTPS /&lt;svc&gt;/..."| gw
-  gw -->|"forward + ctx headers + Bearer"| um & exp & pay & rep & wf & notif & inv
-
-  um & exp & pay & rep & wf & notif & inv -->|"withTenantTransaction<br/>SET LOCAL app.current_tenant"| pg
-  expw & wfw & notifw -->|"withTenantTransaction"| pg
-
-  um & exp & pay & rep & wf & notif & inv -. "stage event in event_outbox (same txn)" .-> pg
+  producer -. "stage event (same txn)" .-> pg
   rly -->|"SELECT pending FOR UPDATE SKIP LOCKED"| pg
   rly =="publish (at-least-once)"==> kafka
   kafka -->|"consume (group per service)"| expw & wfw & notifw
-
-  um <-->|"Casbin enforcer build-once<br/>policy table"| pg
-  um =="PAP write → PUBLISH reload"==> redis
-  redis -->|"SUBSCRIBE policy-reload"| um & exp & pay & rep & wf & notif & inv
-  um & exp & pay & rep & wf & notif & inv -.->|"cache / idempotency"| redis
-
   wfw -->|"pushTransaction (idempotent)"| ext
-  exp -->|"synchronous ERP push"| ext
 ```
 
-**The invariants this diagram encodes:**
+> Note: `expense` also pushes to ERP **synchronously** on approval (in addition to the
+> connector-sync worker path), so the ERP seam is reachable from both the sync and async sides.
+
+### (d) Casbin policy-reload bus — PAP write fans out via Redis pub/sub
+
+*A PAP write in user-management projects into the policy table, then PUBLISHes a reload every pod SUBSCRIBEs to.*
+
+```mermaid
+flowchart TB
+  um["user-management<br/>(PAP)"]
+  pg[("policy table<br/>in PostgreSQL")]
+  redis[("Redis<br/>policy-reload pub/sub")]
+  pods["all API pods<br/>(rebuild enforcer<br/>from policy table)"]
+
+  um <-->|"Casbin enforcer build-once"| pg
+  um =="PAP write → PUBLISH reload"==> redis
+  redis -->|"SUBSCRIBE policy-reload"| pods
+  pods -.->|"reload from store (fail-closed)"| pg
+```
+
+### (e) PROCESS_TYPE pod roles — one image, three runtime roles
+
+*The same container image runs as an `api`, `worker`, or one-shot `migration` pod, selected by env vars.*
+
+```mermaid
+flowchart TB
+  img["One container image<br/>SERVICE_NAME + PROCESS_TYPE"]
+  api["api pod<br/>HTTP listener<br/>+ in-process outbox relay"]
+  worker["worker pod<br/>Kafka consumers<br/>no HTTP"]
+  mig["migration pod<br/>one-shot: migrate<br/>+ migrate-seeders, then exit"]
+
+  img -->|"PROCESS_TYPE=api"| api
+  img -->|"PROCESS_TYPE=worker"| worker
+  img -->|"PROCESS_TYPE=migration"| mig
+```
+
+**The invariants these diagrams encode:**
 
 - **North-south is HTTP, always through the gateway.** The gateway mints `X-Correlation-Id` at the
   edge, validates context headers, and reverse-proxies the first path segment to the owning service —

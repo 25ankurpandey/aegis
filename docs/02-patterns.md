@@ -1,7 +1,7 @@
 # 02 — Engineering Patterns
 
 > The concrete, code-level conventions every Aegis service follows. This document is the
-> "how we build a service" companion to [`01-architecture.md`](01-architecture.md) (the *what*)
+> "how we build a service" companion to [`ARCHITECTURE.md`](ARCHITECTURE.md) (the *what*)
 > and [`03-access-control.md`](03-access-control.md) (the PDP/PEP model). It is normative: a
 > service that does not follow these patterns is not "done" (see
 > [`SPEC.md`](../SPEC.md) §8 and [`AGENTS.md`](../AGENTS.md) §8).
@@ -934,7 +934,7 @@ on pods that should not relay. Tunables: `OUTBOX_RELAY_BATCH` (100), `OUTBOX_REL
 
 ## See also
 
-- [`01-architecture.md`](01-architecture.md) — system topology, services, libraries.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system topology, services, libraries.
 - [`03-access-control.md`](03-access-control.md) — PDP/PEP/PAP/PIP, RBAC+ABAC, permission catalog.
 - [`04-multi-tenancy.md`](04-multi-tenancy.md) — `tenant_id` + Postgres RLS mechanics.
 - [`06-service-to-service.md`](06-service-to-service.md) — context propagation, internal JWT, token exchange.

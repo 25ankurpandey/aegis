@@ -18,7 +18,7 @@
 > **Authoritative scope:** [`../../SPEC.md`](../../SPEC.md) **§10.3** (ERP integration —
 > pluggable connector framework), §1 (locked decisions), §6 (service-to-service).
 >
-> Related: [`../01-architecture.md`](../01-architecture.md) ·
+> Related: [`../ARCHITECTURE.md`](../ARCHITECTURE.md) ·
 > [`../02-patterns.md`](../02-patterns.md) ·
 > [`../06-service-to-service.md`](../06-service-to-service.md) ·
 > [`../09-deployment-and-ops.md`](../09-deployment-and-ops.md) ·

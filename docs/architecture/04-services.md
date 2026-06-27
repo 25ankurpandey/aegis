@@ -17,21 +17,30 @@ All services share the same skeleton:
 - **Cross-cutting**: `@aegis/audit` (hash-chained security log), `@aegis/activity` (shared business
   timeline), `@aegis/approvals` (multi-level maker-checker engine), `@aegis/connectors` (ERP push).
 
+*North-south + cross-cutting: a JWT request routes through the gateway to a service, which writes to the audit and activity logs.*
+
 ```mermaid
-flowchart LR
+flowchart TB
   Client -->|JWT| GW[Gateway]
   GW --> UM[user-management]
   GW --> PR[payroll]
   GW --> INV[invoice]
   GW --> RPT[reporting]
   GW --> NOTIF[notification]
-  PR -. outbox events .-> BUS[(Event bus)]
-  INV -. outbox events .-> BUS
-  BUS --> NOTIF
+
+  UM & PR & INV & RPT & NOTIF --> AUD["@aegis/audit"]
+  PR & INV & RPT --> ACT["@aegis/activity"]
+```
+
+*Eventing: payroll/invoice stage outbox events onto the bus, fanning out to the notification + connector-sync workers (ERP push).*
+
+```mermaid
+flowchart TB
+  PR[payroll] -. outbox events .-> BUS[(Event bus)]
+  INV[invoice] -. outbox events .-> BUS
+  BUS --> NOTIF[notification]
   BUS --> WORKER[workflow worker / connector-sync]
   WORKER --> ERP[(ERP via @aegis/connectors)]
-  UM & PR & INV & RPT & NOTIF --> AUD[@aegis/audit]
-  PR & INV & RPT --> ACT[@aegis/activity]
 ```
 
 ---
@@ -367,7 +376,7 @@ sequenceDiagram
   S->>P: findAccessPolicyByRole(role) → masked_columns/row_filter
   S->>S: insert report_run=queued + activity(run_requested)
   S-->>Ctl: 202 + Location + {runId}
-  Note over S: prod → BullMQ worker compiles+masks; demo settles inline → succeeded
+  Note over S: prod → BullMQ worker compiles+masks, demo settles inline → succeeded
   C->>Ctl: GET /report-runs/:id (poll)
   Ctl-->>C: status + artifact_url (once succeeded)
 ```
