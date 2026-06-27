@@ -78,6 +78,83 @@ Running the full stack needs **only Docker** — nothing else is installed on yo
 npm**, which enables `npm ci` → `npx jest` (unit/integration tests), the browser log dashboard, and
 `npx nx serve <service>` for hot-reload local development.
 
+## Navigation
+
+| I want to… | Go to |
+|---|---|
+| **Browse the API** (offline) | [docs/api/index.html](docs/api/index.html) — open in a browser. Source: [docs/api/openapi.yaml](docs/api/openapi.yaml) |
+| **Browse the API** (live, interactive) | <http://localhost:4000/api-docs> — interactive Swagger served by the gateway (available after `scripts/setup.sh`) |
+| **Understand the architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| **See who can do what** (roles × permissions) | [docs/access-control-matrix.md](docs/access-control-matrix.md) |
+| **Understand one service** (architecture + request-flow flowcharts) | [docs/services/](docs/services/) — one deep-dive per service, each with internal flow/sequence diagrams · see [Per-service docs](#per-service-docs) |
+| **Find any doc** | [docs/README.md](docs/README.md) — the full documentation index |
+| **Test the platform** | [docs/testing/TESTING_GUIDE.md](docs/testing/TESTING_GUIDE.md) |
+| **Develop / extend a service** | the *Local Development* section in each [docs/services/](docs/services/) doc |
+| **See the deployment topology** | [docs/deployment-topology.md](docs/deployment-topology.md) |
+| **Read the spec** (source of truth) | [SPEC.md](SPEC.md) |
+| **Onboard / hand off** | [HANDOFF.md](HANDOFF.md) |
+| **See the build plan** | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
+| **Run the stack** | [scripts/setup.sh](scripts/setup.sh) |
+
+### Per-service docs
+
+**Want to understand how one service works internally?** Each doc below is a deep-dive into a single
+service — its **internal architecture**, **request-flow and sequence diagrams** (how a request moves
+through the service, step by step, in Mermaid flowcharts), its data model and key invariants, and a
+**Local Development** section for running and extending it. Click a service to jump in:
+
+[user-management](docs/services/user-management.md) ·
+[expense](docs/services/expense.md) ·
+[payroll](docs/services/payroll.md) ·
+[reporting](docs/services/reporting.md) ·
+[workflow](docs/services/workflow.md) ·
+[notification](docs/services/notification.md) ·
+[invoice](docs/services/invoice.md) ·
+[connectors](docs/services/connectors.md)
+
+### Architecture deep-dives
+
+The numbered docs walk from "what and why" to "how it runs":
+[access-control model](docs/03-access-control-model.md) ·
+[multi-tenancy / RLS](docs/04-multi-tenancy.md) ·
+[authn/authz flow](docs/05-authn-authz-flow.md) ·
+[service-to-service](docs/06-service-to-service.md) ·
+[data models](docs/07-data-models.md) ·
+[API conventions](docs/08-api-conventions.md) ·
+[deployment & ops](docs/09-deployment-and-ops.md) ·
+[auditability & compliance](docs/10-auditability-and-compliance.md) ·
+[patterns](docs/02-patterns.md).
+There is also a picture-first [interactive walkthrough](docs/interactive/index.html).
+
+## Repo map
+
+```
+aegis/
+├── apps/                  deployable services (per-service image, role via PROCESS_TYPE)
+│   ├── gateway/           edge: JWT validation, routing, rate limiting, correlation IDs
+│   ├── user-management/   identity + access system of record (PAP)
+│   ├── expense/           expense reports + multi-level approval + ERP push
+│   ├── payroll/           highest-sensitivity PII; field encryption + maker-checker
+│   ├── reporting/         CQRS-lite read models, report definitions, async export
+│   ├── workflow/          rules-as-data engine driven by domain events
+│   ├── notification/      in-app + email notifications (idempotent event consumer)
+│   ├── invoice/           header-level invoice lifecycle + matching/approval
+│   ├── cli/               migrations, seeders, operational commands
+│   └── e2e-tests/         end-to-end test harness
+│
+└── libs/                  shared libraries (@aegis/*)
+    ├── access-control/    RBAC + ABAC + row-level scope; PDP/PEP/PAP/PIP (Casbin)
+    ├── approvals/         reusable multi-level approval engine
+    ├── events/            Kafka eventing, transactional outbox, DLQ
+    ├── audit/             hash-chained tamper-evident audit
+    ├── activity/          append-only activity feed
+    ├── connectors/        pluggable ERP connector framework + mock adapters
+    ├── db/                Sequelize models, migrations, RLS plumbing
+    ├── service-core/      RequestContext, logger, error envelope, HTTP client, config
+    ├── shared/            shared types, enums, constants, utilities
+    └── testing/           shared test helpers and fixtures
+```
+
 ## Quick Start
 
 The one-command path for a brand-new machine — Docker is the only prerequisite:
@@ -173,83 +250,6 @@ Inside Docker Compose, services use Docker DNS names instead: `postgres:5432`, `
 
 ```bash
 AEGIS_POSTGRES_PORT=55433 AEGIS_REDIS_PORT=6380 AEGIS_KAFKA_PORT=9092 bash scripts/setup.sh
-```
-
-## Navigation
-
-| I want to… | Go to |
-|---|---|
-| **Browse the API** (offline) | [docs/api/index.html](docs/api/index.html) — open in a browser. Source: [docs/api/openapi.yaml](docs/api/openapi.yaml) |
-| **Browse the API** (live, interactive) | <http://localhost:4000/api-docs> — interactive Swagger served by the gateway (available after `scripts/setup.sh`) |
-| **Understand the architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| **See who can do what** (roles × permissions) | [docs/access-control-matrix.md](docs/access-control-matrix.md) |
-| **Understand one service** (architecture + request-flow flowcharts) | [docs/services/](docs/services/) — one deep-dive per service, each with internal flow/sequence diagrams · see [Per-service docs](#per-service-docs) |
-| **Find any doc** | [docs/README.md](docs/README.md) — the full documentation index |
-| **Test the platform** | [docs/testing/TESTING_GUIDE.md](docs/testing/TESTING_GUIDE.md) |
-| **Develop / extend a service** | the *Local Development* section in each [docs/services/](docs/services/) doc |
-| **See the deployment topology** | [docs/deployment-topology.md](docs/deployment-topology.md) |
-| **Read the spec** (source of truth) | [SPEC.md](SPEC.md) |
-| **Onboard / hand off** | [HANDOFF.md](HANDOFF.md) |
-| **See the build plan** | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
-| **Run the stack** | [scripts/setup.sh](scripts/setup.sh) |
-
-### Per-service docs
-
-**Want to understand how one service works internally?** Each doc below is a deep-dive into a single
-service — its **internal architecture**, **request-flow and sequence diagrams** (how a request moves
-through the service, step by step, in Mermaid flowcharts), its data model and key invariants, and a
-**Local Development** section for running and extending it. Click a service to jump in:
-
-[user-management](docs/services/user-management.md) ·
-[expense](docs/services/expense.md) ·
-[payroll](docs/services/payroll.md) ·
-[reporting](docs/services/reporting.md) ·
-[workflow](docs/services/workflow.md) ·
-[notification](docs/services/notification.md) ·
-[invoice](docs/services/invoice.md) ·
-[connectors](docs/services/connectors.md)
-
-### Architecture deep-dives
-
-The numbered docs walk from "what and why" to "how it runs":
-[access-control model](docs/03-access-control-model.md) ·
-[multi-tenancy / RLS](docs/04-multi-tenancy.md) ·
-[authn/authz flow](docs/05-authn-authz-flow.md) ·
-[service-to-service](docs/06-service-to-service.md) ·
-[data models](docs/07-data-models.md) ·
-[API conventions](docs/08-api-conventions.md) ·
-[deployment & ops](docs/09-deployment-and-ops.md) ·
-[auditability & compliance](docs/10-auditability-and-compliance.md) ·
-[patterns](docs/02-patterns.md).
-There is also a picture-first [interactive walkthrough](docs/interactive/index.html).
-
-## Repo map
-
-```
-aegis/
-├── apps/                  deployable services (per-service image, role via PROCESS_TYPE)
-│   ├── gateway/           edge: JWT validation, routing, rate limiting, correlation IDs
-│   ├── user-management/   identity + access system of record (PAP)
-│   ├── expense/           expense reports + multi-level approval + ERP push
-│   ├── payroll/           highest-sensitivity PII; field encryption + maker-checker
-│   ├── reporting/         CQRS-lite read models, report definitions, async export
-│   ├── workflow/          rules-as-data engine driven by domain events
-│   ├── notification/      in-app + email notifications (idempotent event consumer)
-│   ├── invoice/           header-level invoice lifecycle + matching/approval
-│   ├── cli/               migrations, seeders, operational commands
-│   └── e2e-tests/         end-to-end test harness
-│
-└── libs/                  shared libraries (@aegis/*)
-    ├── access-control/    RBAC + ABAC + row-level scope; PDP/PEP/PAP/PIP (Casbin)
-    ├── approvals/         reusable multi-level approval engine
-    ├── events/            Kafka eventing, transactional outbox, DLQ
-    ├── audit/             hash-chained tamper-evident audit
-    ├── activity/          append-only activity feed
-    ├── connectors/        pluggable ERP connector framework + mock adapters
-    ├── db/                Sequelize models, migrations, RLS plumbing
-    ├── service-core/      RequestContext, logger, error envelope, HTTP client, config
-    ├── shared/            shared types, enums, constants, utilities
-    └── testing/           shared test helpers and fixtures
 ```
 
 ## Development & testing
