@@ -72,6 +72,21 @@ export function authenticate(): RequestHandler {
  */
 let enforcerPromise: Promise<Enforcer> | undefined;
 let enforcerFactory: () => Promise<Enforcer> = createEnforcer;
+let policyOperation: Promise<void> = Promise.resolve();
+
+async function withPolicyOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = policyOperation;
+  let release!: () => void;
+  policyOperation = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous.catch(() => undefined);
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 /** Override the enforcer factory (e.g. an in-memory enforcer in tests / no-DB local runs). */
 export function setEnforcerFactory(factory: () => Promise<Enforcer>): void {
@@ -88,6 +103,7 @@ export function setEnforcer(enforcer: Enforcer): void {
 export function resetEnforcer(): void {
   enforcerPromise = undefined;
   enforcerFactory = createEnforcer;
+  policyOperation = Promise.resolve();
 }
 
 async function getEnforcer(): Promise<Enforcer> {
@@ -106,26 +122,29 @@ async function getEnforcer(): Promise<Enforcer> {
  * over-permissive snapshot. A no-op when no enforcer has been built yet (nothing to refresh).
  */
 export async function reloadEnforcer(): Promise<void> {
-  if (!enforcerPromise) return; // enforcer not built yet — first request will load fresh.
-  let enforcer: Enforcer;
-  try {
-    enforcer = await enforcerPromise;
-  } catch {
-    // The cached build itself failed; reset so the next request rebuilds from scratch.
-    enforcerPromise = undefined;
-    return;
-  }
-  try {
-    await enforcer.loadPolicy();
-  } catch (err) {
-    Logger.error(err as Error, 'ENFORCER_RELOAD_FAILED', 'ACCESS_CONTROL');
+  const currentPromise = enforcerPromise;
+  if (!currentPromise) return; // enforcer not built yet — first request will load fresh.
+  await withPolicyOperation(async () => {
+    let enforcer: Enforcer;
     try {
-      await enforcer.clearPolicy(); // fail-closed: deny until a healthy reload lands.
+      enforcer = await currentPromise;
     } catch {
-      /* even clear failed — leave as-is; getEnforcer errors already fail closed at the gate. */
+      // The cached build itself failed; reset so the next request rebuilds from scratch.
+      enforcerPromise = undefined;
+      return;
     }
-    throw err;
-  }
+    try {
+      await enforcer.loadPolicy();
+    } catch (err) {
+      Logger.error(err as Error, 'ENFORCER_RELOAD_FAILED', 'ACCESS_CONTROL');
+      try {
+        await enforcer.clearPolicy(); // fail-closed: deny until a healthy reload lands.
+      } catch {
+        /* even clear failed — leave as-is; getEnforcer errors already fail closed at the gate. */
+      }
+      throw err;
+    }
+  });
 }
 
 /**
@@ -167,16 +186,18 @@ export interface PolicyGrant {
  * before any new grant is applied — the safe (fail-closed) direction.
  */
 export async function applyPolicyGrant(grant: PolicyGrant): Promise<void> {
-  const enforcer = await getEnforcer();
-  for (const g of grant.revokeGroupings ?? []) {
-    await enforcer.removeGroupingPolicy(g.user, g.role, g.dom);
-  }
-  for (const p of grant.permissions ?? []) {
-    await enforcer.addPolicy(p.sub, p.dom, p.act, 'allow');
-  }
-  for (const g of grant.groupings ?? []) {
-    await enforcer.addGroupingPolicy(g.user, g.role, g.dom);
-  }
+  await withPolicyOperation(async () => {
+    const enforcer = await getEnforcer();
+    for (const g of grant.revokeGroupings ?? []) {
+      await enforcer.removeGroupingPolicy(g.user, g.role, g.dom);
+    }
+    for (const p of grant.permissions ?? []) {
+      await enforcer.addPolicy(p.sub, p.dom, p.act, 'allow');
+    }
+    for (const g of grant.groupings ?? []) {
+      await enforcer.addGroupingPolicy(g.user, g.role, g.dom);
+    }
+  });
   await invalidatePolicies();
 }
 
@@ -238,9 +259,11 @@ export function authorizeAny(actions: Permission[], opts: AuthorizeOptions = {})
       }
 
       // 1. Casbin RBAC gate (dom = tenantId). Allow if any role OR the user id is granted.
-      const enforcer = await getEnforcer();
       const subjects = [...(principal.roles ?? []), principal.userId].filter(Boolean) as string[];
-      const allowedAction = await firstAllowedAction(enforcer, subjects, tenantId, actions);
+      const allowedAction = await withPolicyOperation(async () => {
+        const enforcer = await getEnforcer();
+        return firstAllowedAction(enforcer, subjects, tenantId, actions);
+      });
       if (!allowedAction) {
         return next(ErrUtils.forbidden(`none of [${actions.join(', ')}] granted in tenant`));
       }

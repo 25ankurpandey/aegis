@@ -208,6 +208,49 @@ describe('PAP policy projection + reload (W5-03)', () => {
     expect(await enforce(enforcer, SystemRole.Approver, TENANT_A, Permission.ExpenseReportApprove)).toBe(false);
   });
 
+  it('serializes authorize() with policy reload so a request never observes partial policy', async () => {
+    const enforcer = await createInMemoryEnforcer({
+      policies: [{ sub: SystemRole.Admin, dom: '*', act: Permission.UserInvite }],
+    });
+    setEnforcer(enforcer);
+
+    let reloadStarted!: () => void;
+    let finishReload!: () => void;
+    const reloadStartedPromise = new Promise<void>((resolve) => {
+      reloadStarted = resolve;
+    });
+    const finishReloadPromise = new Promise<void>((resolve) => {
+      finishReload = resolve;
+    });
+
+    jest.spyOn(enforcer, 'loadPolicy').mockImplementationOnce(async () => {
+      await enforcer.clearPolicy();
+      reloadStarted();
+      await finishReloadPromise;
+      await enforcer.addPolicy(SystemRole.Admin, '*', Permission.UserInvite, 'allow');
+    });
+
+    const reload = reloadEnforcer();
+    await reloadStartedPromise;
+
+    const { req, res } = mockReqRes({
+      userId: 'admin-user',
+      tenantId: TENANT_A,
+      roles: [SystemRole.Admin],
+    });
+    const guarded = runGuard(authorize(Permission.UserInvite), req, res);
+    let guardSettled = false;
+    guarded.then(() => {
+      guardSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(guardSettled).toBe(false);
+    finishReload();
+    await expect(reload).resolves.toBeUndefined();
+    await expect(guarded).resolves.toBeUndefined();
+  });
+
   it('reloadEnforcer is a no-op when no enforcer has been built', async () => {
     resetEnforcer();
     await expect(reloadEnforcer()).resolves.toBeUndefined();

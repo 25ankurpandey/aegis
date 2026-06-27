@@ -1,0 +1,24 @@
+# Keep the image build fast + deterministic. Critically, exclude the host's Nx cache and node_modules
+# so `COPY . .` cannot poison the in-container build with foreign cache entries (the Nx
+# "unknown local cache" error) — npm ci installs node_modules fresh inside the image, and Nx builds
+# with a clean cache.
+.git
+.gitignore
+node_modules
+**/node_modules
+.nx
+**/.nx
+dist
+**/dist
+tmp
+coverage
+**/coverage
+*.log
+.aegis
+.env.local
+**/.env.local
+docker-compose.e2e.yml
+mono_crash*
+.DS_Store
+# NOTE: docs/ is intentionally NOT ignored — the gateway webpack build copies docs/api/openapi.yaml
+# into the bundle for the live /api-docs Swagger UI.
