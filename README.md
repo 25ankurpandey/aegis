@@ -175,69 +175,6 @@ Inside Docker Compose, services use Docker DNS names instead: `postgres:5432`, `
 AEGIS_POSTGRES_PORT=55433 AEGIS_REDIS_PORT=6380 AEGIS_KAFKA_PORT=9092 bash scripts/setup.sh
 ```
 
-### End-to-End Testing
-
-For a push-button reviewer run that starts the full Dockerized stack, starts the browser dashboard,
-and executes scripted real HTTP API calls through the gateway:
-
-```bash
-bash scripts/test-dockerized.sh
-```
-
-The runner prints each flow as it executes: auth fail-closed checks, dynamic PAP role assignment,
-expense submission, teams/tags/assignee annotations, invoice duplicate detection, payroll own-payslip
-authorization, reporting run/export/schedule, workflow connector/rule checks, notification inbox
-reads, and cross-tenant RLS isolation.
-
-For local code iteration without rebuilding images every time, use Docker for infra and run services
-from TypeScript:
-
-```bash
-bash scripts/dev-local.sh
-AEGIS_BASE_URL=http://127.0.0.1:4000 node scripts/e2e/http-flow-tests.js
-bash scripts/dev-local-stop.sh
-```
-
-For unit/integration checks:
-
-```bash
-npx jest
-```
-
-The detailed testing plan lives in [docs/testing/TESTING_GUIDE.md](docs/testing/TESTING_GUIDE.md),
-with manual curl recipes in [docs/testing/CURL_EXAMPLES.md](docs/testing/CURL_EXAMPLES.md) and deeper
-side-effect checks in [docs/testing/LIVE_E2E_RUNBOOK.md](docs/testing/LIVE_E2E_RUNBOOK.md).
-
-### Develop or extend a service
-
-To work on one service with hot-reload while the rest of the platform runs in Docker: bring up just
-the infra, apply the schema, then serve the service from TypeScript.
-
-```bash
-docker compose -f docker-compose.all.yml up -d postgres redis kafka      # infra only
-docker compose -f docker-compose.all.yml run --rm migrate                # schema + seeders
-npx nx serve <service>            # user-management | expense | payroll | reporting | workflow | notification | invoice
-```
-
-> **Env gotcha:** the committed `apps/<service>/.env` uses Docker DNS names (`postgres:5432`,
-> `redis:6379`, `kafka:9092`, and inter-service URLs like `user-management:4001`). When a service runs
-> *outside* Docker via `nx serve`, point those at the published host ports instead —
-> `127.0.0.1:5432` / `127.0.0.1:6379` / `127.0.0.1:9092` / `127.0.0.1:400x`.
-
-Each service's doc has a **Local Development** section with its exact env overrides, port,
-runtime dependencies, and verify/test/build commands:
-
-[user-management](docs/services/user-management.md#local-development) ·
-[expense](docs/services/expense.md#local-development) ·
-[payroll](docs/services/payroll.md#local-development) ·
-[reporting](docs/services/reporting.md#local-development) ·
-[workflow](docs/services/workflow.md#local-development) ·
-[notification](docs/services/notification.md#local-development) ·
-[invoice](docs/services/invoice.md#local-development)
-
-`npx nx test <service>` runs that service's tests; `npx nx build <service>` runs its production
-type-check + bundle.
-
 ## Navigation
 
 | I want to… | Go to |
@@ -314,6 +251,73 @@ aegis/
     ├── shared/            shared types, enums, constants, utilities
     └── testing/           shared test helpers and fixtures
 ```
+
+## Development & testing
+
+Deeper paths for exercising the test suites and developing against the platform.
+
+### End-to-End Testing
+
+For a push-button reviewer run that starts the full Dockerized stack, starts the browser dashboard,
+and executes scripted real HTTP API calls through the gateway:
+
+```bash
+bash scripts/test-dockerized.sh
+```
+
+The runner prints each flow as it executes: auth fail-closed checks, dynamic PAP role assignment,
+expense submission, teams/tags/assignee annotations, invoice duplicate detection, payroll own-payslip
+authorization, reporting run/export/schedule, workflow connector/rule checks, notification inbox
+reads, and cross-tenant RLS isolation.
+
+For local code iteration without rebuilding images every time, use Docker for infra and run services
+from TypeScript:
+
+```bash
+bash scripts/dev-local.sh
+AEGIS_BASE_URL=http://127.0.0.1:4000 node scripts/e2e/http-flow-tests.js
+bash scripts/dev-local-stop.sh
+```
+
+For unit/integration checks:
+
+```bash
+npx jest
+```
+
+The detailed testing plan lives in [docs/testing/TESTING_GUIDE.md](docs/testing/TESTING_GUIDE.md),
+with manual curl recipes in [docs/testing/CURL_EXAMPLES.md](docs/testing/CURL_EXAMPLES.md) and deeper
+side-effect checks in [docs/testing/LIVE_E2E_RUNBOOK.md](docs/testing/LIVE_E2E_RUNBOOK.md).
+
+### Develop or extend a service
+
+To work on one service with hot-reload while the rest of the platform runs in Docker: bring up just
+the infra, apply the schema, then serve the service from TypeScript.
+
+```bash
+docker compose -f docker-compose.all.yml up -d postgres redis kafka      # infra only
+docker compose -f docker-compose.all.yml run --rm migrate                # schema + seeders
+npx nx serve <service>            # user-management | expense | payroll | reporting | workflow | notification | invoice
+```
+
+> **Env gotcha:** the committed `apps/<service>/.env` uses Docker DNS names (`postgres:5432`,
+> `redis:6379`, `kafka:9092`, and inter-service URLs like `user-management:4001`). When a service runs
+> *outside* Docker via `nx serve`, point those at the published host ports instead —
+> `127.0.0.1:5432` / `127.0.0.1:6379` / `127.0.0.1:9092` / `127.0.0.1:400x`.
+
+Each service's doc has a **Local Development** section with its exact env overrides, port,
+runtime dependencies, and verify/test/build commands:
+
+[user-management](docs/services/user-management.md#local-development) ·
+[expense](docs/services/expense.md#local-development) ·
+[payroll](docs/services/payroll.md#local-development) ·
+[reporting](docs/services/reporting.md#local-development) ·
+[workflow](docs/services/workflow.md#local-development) ·
+[notification](docs/services/notification.md#local-development) ·
+[invoice](docs/services/invoice.md#local-development)
+
+`npx nx test <service>` runs that service's tests; `npx nx build <service>` runs its production
+type-check + bundle.
 
 ## License
 
