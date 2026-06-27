@@ -98,7 +98,7 @@ silo tier for residency/erasure). See
 
 ## 10. Operational concerns
 
-Single multi-purpose image + `PROCESS_TYPE` (api/worker/migration); immutable SHA-image promotion;
+Per-service images from one shared `Dockerfile.service` + `PROCESS_TYPE` (api/worker/migration) entrypoint switch; immutable SHA-image promotion;
 migrations as a one-shot task; runtime secrets from a param store; `/health` readiness probing
 DB+cache; OpenTelemetry + correlation-id logs. **One-command local run** (`scripts/dev-up.sh` /
 VS Code Cmd+Shift+B) and **one-`terraform apply`** cloud provisioning ([`infra/terraform`](infra/terraform)).

@@ -9,9 +9,10 @@ PostgreSQL database with **Row-Level Security (RLS)** for tenant isolation, **Ca
 tenant domain) for authorization, **Redis** for cache + cross-pod policy-reload fan-out, and
 **Kafka** for cross-service domain events delivered through a **transactional outbox**.
 
-The whole system ships as **one container image**; the role a container plays at runtime is selected
-by the `PROCESS_TYPE` / `SERVICE_NAME` env vars (`scripts/start.sh`, `Dockerfile`). The same bytes
-run the API, the workers, and the migrations.
+Each service ships as its **own container image**, built from one shared `Dockerfile.service`; the
+role a container plays at runtime is selected by the `PROCESS_TYPE` / `SERVICE_NAME` env vars
+(`scripts/start.sh`). A service's worker reuses its api image — the same bytes — and migrations run
+as a one-shot job from the `cli` image.
 
 ---
 

@@ -17,9 +17,10 @@ with a tenant domain + ABAC conditions) for centralized authorization, **Redis**
 cross-pod policy-reload fan-out, and **Kafka** for asynchronous cross-service domain events delivered
 through a **transactional outbox**. On top of that substrate it demonstrates real finance workflows —
 expense, invoice, payroll (maker-checker), a rules-as-data workflow engine, reporting, and
-notification — with tamper-evident hash-chained auditing throughout. The whole system ships as **one
-container image** whose runtime role (api / worker / migration) is selected by env vars, so the API,
-the workers, and the migrations all run byte-identical bytes.
+notification — with tamper-evident hash-chained auditing throughout. It is a **microservices
+deployment**: each service builds its **own container image** from one shared `Dockerfile.service`,
+and `PROCESS_TYPE` (api / worker / migration) selects the runtime role — so a service's api and its
+worker run byte-identical bytes, while migrations run as a one-shot job from the `cli` image.
 
 ---
 
