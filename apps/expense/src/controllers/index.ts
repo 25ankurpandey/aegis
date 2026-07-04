@@ -2,3 +2,5 @@
 import './health.controller';
 import './expense-report.controller';
 import './expense.controller';
+import './ai-tools.controller';
+import './ai-act.controller';

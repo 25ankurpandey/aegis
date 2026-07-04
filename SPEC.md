@@ -1,5 +1,11 @@
 # Aegis — Canonical Specification (Single Source of Truth)
 
+> **Scope note.** This SPEC is the single source of truth for the **currently-built access-control
+> platform** (the code under `apps/` + `libs/`). The broader **product vision** (agentic-first, modular,
+> pay-per-module, AI-native, autonomously-operated) lives in [`CONTEXT.md`](CONTEXT.md) +
+> [`docs/strategy/`](docs/strategy/) + [`docs/brain/`](docs/brain/README.md). For the current code, this
+> file wins; for where Aegis is going, `CONTEXT.md` wins.
+
 > This file is the authoritative spec for the Aegis platform. Every other document
 > (`AGENTS.md`, `IMPLEMENTATION_PLAN.md`, `docs/**`) and every agent MUST be consistent
 > with this file. If a decision conflicts, **this file wins** — update it deliberately,

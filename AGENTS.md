@@ -1,5 +1,13 @@
 # AGENTS.md — Context for AI agents working on Aegis
 
+> **⚠️ START HERE — the product vision has evolved far beyond this file.** This document remains accurate
+> for the *originally-built access-control platform* (the current shipped code), but Aegis is becoming an
+> **agentic-first, modular, multi-industry, governance-native platform**. For the FULL current context —
+> the vision, every idea, the architecture, all decisions, the current build state, and the roadmap —
+> **read [`CONTEXT.md`](CONTEXT.md) first**, then the "second brain" at
+> [`docs/brain/`](docs/brain/README.md) (memory map + append-only audit log + decisions). This file below
+> is authoritative only for the existing access-control code; `CONTEXT.md` is authoritative for the vision.
+
 > Read this file **first**, every time. Then read [`SPEC.md`](SPEC.md) (authoritative spec),
 > the relevant file under [`docs/`](docs/), and the phase you are picking up in
 > [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md). **Keep these documents updated** as you work

@@ -46,6 +46,7 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "body-parser": "^1.20.2",
     "bullmq": "^5.7.0",
     "casbin": "^5.30.0",

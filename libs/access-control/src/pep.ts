@@ -4,7 +4,7 @@ import type { Enforcer } from 'casbin';
 import type { Permission } from '@aegis/shared-enums';
 import { Scope } from '@aegis/shared-enums';
 import type { AccessShape } from '@aegis/shared-types';
-import { Config, ErrUtils, RequestContext, markAuthGuard } from '@aegis/service-core';
+import { Config, ErrUtils, RequestContext, markAuthGuard, markPermissions } from '@aegis/service-core';
 import { Logger } from '@aegis/service-core';
 import { decide, evaluateAbac } from './pdp';
 import { createEnforcer, enforce } from './enforcer';
@@ -246,7 +246,7 @@ export function authorize(action: Permission, opts: AuthorizeOptions = {}): Requ
 
 /** Authorization PEP variant for routes that accept one of several permissions. */
 export function authorizeAny(actions: Permission[], opts: AuthorizeOptions = {}): RequestHandler {
-  return markAuthGuard(async (req, res, next) => {
+  const guard: RequestHandler = async (req, res, next) => {
     try {
       const principal = req.principal;
       if (!principal) {
@@ -294,5 +294,8 @@ export function authorizeAny(actions: Permission[], opts: AuthorizeOptions = {})
     } catch (err) {
       return next(err);
     }
-  });
+  };
+  // Tag as an auth guard AND stamp the required permission(s) so the router walk can auto-generate an
+  // authz-bound tool for this route (the permission is otherwise trapped in this closure).
+  return markPermissions(markAuthGuard(guard), actions.map((a) => String(a)));
 }

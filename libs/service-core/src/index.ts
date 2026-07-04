@@ -28,3 +28,4 @@ export * from './cache/flag-cache';
 export * from './bootstrap/bootstrap';
 export * from './bootstrap/shutdown';
 export * from './bootstrap/pep-assertion';
+export * from './bootstrap/route-metadata';

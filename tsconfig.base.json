@@ -22,6 +22,7 @@
     "paths": {
       "@aegis/service-core": ["libs/service-core/src/index.ts"],
       "@aegis/access-control": ["libs/access-control/src/index.ts"],
+      "@aegis/ai-core": ["libs/ai-core/src/index.ts"],
       "@aegis/connectors": ["libs/connectors/src/index.ts"],
       "@aegis/audit": ["libs/audit/src/index.ts"],
       "@aegis/activity": ["libs/activity/src/index.ts"],

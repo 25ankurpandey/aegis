@@ -1,5 +1,11 @@
 # Aegis — Handoff & Onboarding
 
+> **⚠️ This handoff covers the originally-built access-control platform only.** The product vision has
+> since evolved into an **agentic-first, modular, governance-native platform**. For the complete current
+> handoff — vision, ideas, architecture, decisions, what's real vs designed, and what to build next —
+> **read [`CONTEXT.md`](CONTEXT.md) first**, then [`docs/brain/`](docs/brain/README.md). Everything below
+> remains true for the existing code and is still the way to run/test it.
+
 > **Read this first.** One self-contained document for a fresh agent or human reviewer to fully
 > understand, run, test, and continue this platform with zero prior context. Every factual claim
 > below was verified against the live repo at the time of writing (47 commits, HEAD `a683051`).

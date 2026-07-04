@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import type Joi from 'joi';
 import { ErrUtils } from '../errors/error-utils';
+import { markSchema } from '../bootstrap/route-metadata';
 
 /** Which part of the request a schema validates. */
 export type ValidationSource = 'body' | 'query' | 'params';
@@ -52,7 +53,7 @@ export function sanitizeValidationDetails(error: Joi.ValidationError): SafeValid
  * off so the error `details` carry every failing field at once.
  */
 export function validate(schema: Joi.ObjectSchema, source: ValidationSource = 'body'): RequestHandler {
-  return async (req, _res, next) => {
+  const handler: RequestHandler = async (req, _res, next) => {
     try {
       const value = await schema.validateAsync(req[source], {
         abortEarly: false,
@@ -66,4 +67,7 @@ export function validate(schema: Joi.ObjectSchema, source: ValidationSource = 'b
       next(ErrUtils.validation('Validation error', sanitizeValidationDetails(err as Joi.ValidationError)));
     }
   };
+  // Stamp the schema + source so the router walk can auto-derive this route's input contract as a
+  // JSON-Schema tool parameter (self-describing to agents). See @aegis/service-core route-metadata.
+  return markSchema(handler, schema, source);
 }
