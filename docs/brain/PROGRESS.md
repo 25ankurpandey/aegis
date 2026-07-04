@@ -10,7 +10,8 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-02 (end of session T21).
+> **Last updated:** 2026-07-02 (end of session T22). On branch **`feat/agentic-platform`** (main untouched).
+> Live infra up: aegis **Postgres @ 55432** (migrated) + **Redis @ 6380** (compose, override ports).
 
 ---
 
@@ -30,7 +31,24 @@ flow** (broker + `expense` `/_ai/act` endpoints; typecheck-verified, needs infra
 conversation/session memory, generative UI-as-data, and the registry drift-gate. **Fully-autonomous
 (no-human) writes on money/irreversible stay off by design** (the ceremony requires human evidence).
 
-### What we did last (T21) — fanned out the remaining safe-slice builds (4 in parallel)
+### What we did last (T22) — branch + real infra + 3 infra-backed builds
+- **Branch:** moved all work to **`feat/agentic-platform`** (main clean, nothing pushed). Committed checkpoints.
+- **Live infra (no mocks):** brought up the aegis-stack **Postgres @ 55432 (fully migrated, 68 tables)** +
+  **Redis @ 6380** on override ports; `aegis_owner` for DDL, non-owner `aegis_app` for RLS runtime.
+- **Multi-LLM gateway** (`libs/ai-core/src/llm/`) — modeled on Wayfinder's `ProviderChain`: a registry of
+  providers that is **priority-ordered, selectable (`setActive`), runtime-switchable, with per-hop
+  fallback**; `AnthropicLlmClient` added alongside `OpenAiCompatibleLlmClient`; `buildLlmGateway` + env
+  config (lights up when keys are added). **23 tests.**
+- **Module Entitlement Service** (`libs/db/src/entitlement/` + migration `0032_tenant_modules`) — the
+  pay-per-module core: `tenant_modules` table with **FORCE RLS**, repo + service (`isModuleEnabled`,
+  `listEnabledModuleIds`, `setModuleEntitlement`) + a tool-filter predicate builder. **Applied to the live
+  DB; 6/6 integration tests against real Postgres proving RLS tenant isolation** (owner-DDL / app-RLS).
+- **Redis-backed durable stores** (`libs/ai-core/src/persistence/`) — `RedisConversationStore` +
+  `RedisPendingActionStore` (TTL'd) so sessions + pending supervised actions survive restarts. **Live-Redis
+  integration test.**
+- **Totals:** ai-core **134/134** (17 suites); db **21/21** (incl. live-DB entitlement); strict typechecks clean.
+
+### What we did earlier (T21) — the remaining safe-slice builds (4 in parallel)
 - **Supervised action broker** (`src/execution/supervised-action-broker.ts`) + `expense` `/_ai/act` +
   `/_ai/act/:id/confirm` endpoints — the **running two-step flow** over `executeSupervisedWrite`: `propose`
   gates + persists a pending action (surfacing the ceremony), `confirm` executes only once the ceremony +
@@ -44,16 +62,17 @@ conversation/session memory, generative UI-as-data, and the registry drift-gate.
 - Plus (me): wired `deriveDangerFacts` to prefer a tool's explicit `riskTier`. **103/103 ai-core tests.**
 
 ### In flight right now
-- (nothing executing — T21 integrated and verified.)
+- (nothing executing — T22 integrated and verified.)
 
 ### What to do next
-- **Live end-to-end demo** with a real LLM gateway — *blocked on you*: `AEGIS_LLM_BASE_URL` +
-  `AEGIS_LLM_API_KEY` (LiteLLM/OpenAI/OpenRouter) and/or the Docker stack up; OR run the MCP stdio server
-  into Claude Desktop. (Also: run the `/_ai/act` flow against a live `expense` to exercise supervised-write end-to-end.)
-- **The module manifest + Entitlement Service** — the pay-per-module spine (Chargebee; reuse plutus
-  dual-ledger). Large; needs DB + touches **O1** (ecosystem scope) — wants your decision + a focused build.
-- The app/runtime **second brain** (per-tenant knowledge, pgvector, RLS-scoped) + self-knowledge RAG (needs DB).
+- **pgvector app-brain** — set up a pgvector Postgres (swap the compose image / one-off container), then
+  build the per-tenant knowledge store + self-knowledge RAG (RLS-scoped). Infra-ready now that DB is up.
 - A first **autonomous capability** (self-audit / reconciliation) — propose-only, gated by verifier + human sample.
+- **Entitlement completion** — Chargebee webhook ingestion + materialization into `tenant_modules` (the
+  core store + service now exist); wire the entitlement predicate into the live tool filter. Touches **O1**.
+- **Live end-to-end demo** with a real LLM gateway — *blocked on you*: drop `AEGIS_LLM_BASE_URL` +
+  `AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS` JSON) → the multi-LLM gateway lights up; then run the
+  `/_ai/act` supervised flow against a live `expense`, or the MCP stdio server into Claude Desktop.
 - Decision-gated: voice, generative-UI *renderer* (web/Unity), omniscience, AR, products.
 - Still gated: **no fully-autonomous (no-human) money writes** — supervised writes require the human ceremony by design.
 
@@ -66,9 +85,10 @@ are building the safe slice.)
 
 ## 🧱 Implementation ledger — what is REAL (built + tested)
 
-Everything below is committed code, green under `nx test ai-core` (103/103 across 15 suites at T21) +
-strict typecheck, with the 147 substrate lib tests unaffected. All within the **read-only / propose /
-human-supervised** safe slice (no fully-autonomous money writes).
+Everything below is committed code (branch `feat/agentic-platform`), green at T22: **ai-core 134/134
+(17 suites)** + **db 21/21** (incl. a live-Postgres RLS entitlement test) + strict typechecks clean;
+the 147 substrate lib tests unaffected. All within the **read-only / propose / human-supervised** safe
+slice (no fully-autonomous money writes).
 
 | Capability | Where | Status |
 |---|---|---|
@@ -93,6 +113,10 @@ human-supervised** safe slice (no fully-autonomous money writes).
 | **Generative UI (A2UI-shaped)** — `renderTurn` (incl. approval card) + `toolInputForm` (UI-as-data) | `libs/ai-core/src/ui/*` | ✅ T21 |
 | **Registry drift-gate** — `validateToolRegistry` (CapabilityManifest.Validate analog) | `libs/ai-core/src/tool-registry/registry-validation.ts` | ✅ T21 |
 | **`deriveDangerFacts` prefers explicit `riskTier`** | `libs/ai-core/src/orchestrator/derive-danger-facts.ts` | ✅ T21 |
+| **Multi-LLM gateway** — priority/selectable/runtime-switch/fallback registry + `AnthropicLlmClient` + `buildLlmGateway` (env-config) | `libs/ai-core/src/llm/*` | ✅ T22 |
+| **Module Entitlement Service** — `tenant_modules` (FORCE RLS) + repo + service + tool-filter predicate; **live-DB RLS test** | `libs/db/src/entitlement/*`, `apps/cli/src/migrations/0032_tenant_modules.ts` | ✅ T22 |
+| **Redis-backed durable stores** — `RedisConversationStore` + `RedisPendingActionStore` (TTL'd); **live-Redis test** | `libs/ai-core/src/persistence/*` | ✅ T22 |
+| **Local infra** — aegis Postgres @ 55432 (migrated) + Redis @ 6380 (compose, override ports) | docker compose | ✅ T22 |
 
 ---
 
@@ -137,10 +161,11 @@ Legend: ✅ done · ◑ partial · ✗ not yet.
 6. Enterprise/compliance + autonomous-ops hardening (SOC2 track, GitOps/AIOps).
 7. **Gated behind decisions:** omniscience layer, AR ecosystem, Agentify/Policing products.
 
-*Done since this list was first written (T14–T21): the tool-registry generator, filter, tool-server,
-MCP transport + stdio server, orchestrator + LLM gateway, danger layer (enforced), verifier, supervised-
-write path + running broker/endpoint, conversation memory, generative UI-as-data, registry drift-gate,
-riskTier wiring, manifest descriptions.*
+*Done since this list was first written (T14–T22): the tool-registry generator, filter, tool-server,
+MCP transport + stdio server, orchestrator + multi-LLM gateway (priority/selectable/fallback), danger
+layer (enforced), verifier, supervised-write path + running broker/endpoint, conversation memory,
+generative UI-as-data, registry drift-gate, riskTier wiring, manifest descriptions, the module
+entitlement core (`tenant_modules` + RLS, live-DB tested), and Redis-backed durable stores.*
 
 **Hard gates (do NOT cross without the work + a passing "unsafe-path-blocked" test):** fully-autonomous
 money/irreversible writes (D19 — needs the supervised path proven + hardened); the products/AR (D20).

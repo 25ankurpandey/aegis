@@ -20,6 +20,7 @@ const config: Config = {
     '^@aegis/shared-enums$': `${root}/libs/shared/enums/src/index.ts`,
     '^@aegis/shared-types$': `${root}/libs/shared/types/src/index.ts`,
     '^@aegis/shared-constants$': `${root}/libs/shared/constants/src/index.ts`,
+    '^@aegis/events$': `${root}/libs/events/src/index.ts`,
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: { noUnusedLocals: false, declaration: false } }],

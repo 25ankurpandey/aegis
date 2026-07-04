@@ -300,4 +300,21 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T22.*
+## T22 — 2026-07-02 · Branch + real infra + 3 infra-backed builds (multi-LLM · entitlement · Redis persistence)
+
+- **Ask:** clarify "safe slices" (are we skipping for complexity?); move all work to a NEW branch (nothing pushed); do LLM integration the Wayfinder way (adapter/factory, multiple LLMs, priority-based, selectable, runtime-switchable); Postgres+Docker+Redis are available locally — **set up whatever's needed, don't cut corners or skip because of setup**; fan out parallel agents; do passes; keep implementing until a benchmark, then founder adds LLM keys.
+- **Clarified "safe slice":** it is ONE deliberate safety property (agent never autonomously moves money/irreversible without a human ceremony + independent verifier — the D19 gate), NOT corner-cutting for complexity. The only real deferrals were infra/decision-gated; the infra excuse is now removed.
+- **Branch:** created `feat/agentic-platform` from `main`; committed the full T14–T21 agentic layer as a checkpoint (`cf230f0`). main untouched; nothing pushed.
+- **Infra (real, no mocks):** brought up the aegis-stack **Postgres @ 55432 (fully migrated — the `aegis_pg` volume already had all 68 tables)** + **Redis @ 6380** via docker compose on override ports (host 5432/6379 are the founder's own). `aegis_owner` = DDL/migrations; non-owner `aegis_app` = RLS runtime (can't DDL — by design). Confirmed the host migrate command (ts-node + tsconfig-paths).
+- **Done (3-agent parallel Workflow + integration):**
+  - **(1) Multi-LLM gateway** (`libs/ai-core/src/llm/`) — studied Wayfinder's `ProviderChain` pattern; built a provider registry that is **priority-ordered, selectable (`setActive`), runtime-switchable, with per-hop fallback**; `AnthropicLlmClient` (fetch, no dep) alongside `OpenAiCompatibleLlmClient`; `buildLlmGateway(specs)` + `readLlmProviderSpecsFromEnv()` (AEGIS_LLM_PROVIDERS json, or AEGIS_LLM_* single provider). **23 tests** (offline).
+  - **(2) Module Entitlement Service** (`libs/db/src/entitlement/` + `apps/cli/src/migrations/0032_tenant_modules.ts`) — the pay-per-module CORE: `tenant_modules` table with FORCE RLS (RESTRICTIVE tenant policy + aegis_app grants), repo (`withTenantTransaction`), `EntitlementService` (`isModuleEnabled`/`listEnabledModuleIds`/`setModuleEntitlement`), and a sync-predicate builder for the ai-core tool filter (`moduleIdFromTool`/`entitledModuleIds`). Migration APPLIED to the live DB; **6/6 integration tests against real Postgres proving RLS tenant isolation** (owner-seed / app-role reads). Added `@aegis/events` to db jest moduleNameMapper (the real withTenantTransaction import chain is now exercised live).
+  - **(3) Redis-backed durable stores** (`libs/ai-core/src/persistence/`) — `RedisConversationStore` + `RedisPendingActionStore` (TTL'd; ioredis, no dep) so sessions + pending supervised actions survive restarts. **Live-Redis integration test** (unique key prefix + cleanup).
+  - **Integration (me):** added 7 ai-core barrel exports (llm + persistence); (Track 2 owned the libs/db barrel + migration index). Ran the unified verify.
+- **Verified:** `nx test ai-core` = **134/134** (17 suites); `nx test db` = **21/21** (incl. the live-DB entitlement RLS test); ai-core lib + db lib + expense app all strict-typecheck clean.
+- **Docs updated:** `PROGRESS.md` (T22 briefing + ledger +4 rows + next + count), `STATE.md`, `CONTEXT.md §12`, this entry.
+- **Next:** pgvector app-brain (stand up pgvector image) + self-knowledge RAG; a first autonomous capability; entitlement completion (Chargebee webhooks + wire the live tool filter); then the founder drops LLM keys → live end-to-end demo. Fully-autonomous money writes stay gated (D19).
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T23.*

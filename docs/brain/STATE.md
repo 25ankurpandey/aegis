@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-02 (session T15).
+> **Last updated:** 2026-07-02 (session T22). Branch **`feat/agentic-platform`**; live Postgres @ 55432 + Redis @ 6380 up.
 
 ## Phase
 **Design phase COMPLETE; BUILD phase STARTED.** All ten strategy docs written and adversarially
@@ -64,19 +64,27 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     isolation-in-the-key. **Generative UI** (`src/ui/`) — `renderTurn` (+ approval card) + `toolInputForm`
     (UI-as-data). **Registry drift-gate** (`src/tool-registry/registry-validation.ts`). `deriveDangerFacts`
     now prefers a tool's explicit `riskTier`.
-  - **`nx test ai-core` = 103/103** across 15 suites; strict lib typecheck clean; expense app typechecks; MCP dep in package.json.
+  - **[T22] Multi-LLM gateway** (`libs/ai-core/src/llm/`) — priority/selectable/runtime-switch/fallback
+    registry + `AnthropicLlmClient` + `buildLlmGateway` (env-config; lights up when keys added). 23 tests.
+  - **[T22] Module Entitlement Service** (`libs/db/src/entitlement/` + migration `0032_tenant_modules`) —
+    `tenant_modules` with FORCE RLS; repo + service + tool-filter predicate; **6/6 live-Postgres RLS tests**.
+  - **[T22] Redis-backed durable stores** (`libs/ai-core/src/persistence/`) — conversation + pending-action
+    stores (TTL'd) survive restarts; **live-Redis test**.
+  - **[T22] Infra:** aegis Postgres @ 55432 (migrated) + Redis @ 6380 (compose, override ports); branch `feat/agentic-platform`.
+  - **Totals:** `nx test ai-core` = **134/134** (17 suites) + `nx test db` = **21/21** (incl. live-DB entitlement); strict typechecks clean; expense app typechecks.
 
 ## In progress
 - (nothing executing right now.)
 
 ## Next (recommended order)
-1. **Live end-to-end demo** — set `AEGIS_LLM_BASE_URL`/`AEGIS_LLM_API_KEY` (LiteLLM) + bring `expense` up
-   (then exercise the `/_ai/act` supervised flow), OR run `scripts/mcp/aegis-mcp-stdio.ts` into Claude
-   Desktop. **Blocked on the founder** (gateway key + infra).
-2. **The module manifest + Entitlement Service** — the pay-per-module spine (Chargebee; reuse plutus
-   dual-ledger). Large; needs DB; touches **O1** — wants a founder decision + a focused build.
-3. The app/runtime **second brain** (per-tenant knowledge, pgvector, RLS-scoped) + self-knowledge RAG (needs DB).
-4. A first **autonomous capability** (self-audit/reconciliation) — propose-only, gated by verifier + human sample.
+1. **pgvector app-brain** — stand up a pgvector Postgres (swap compose image / one-off container), then the
+   per-tenant knowledge store + self-knowledge RAG (RLS-scoped). Infra now available.
+2. A first **autonomous capability** (self-audit / reconciliation) — propose-only, gated by verifier + human sample.
+3. **Entitlement completion** — Chargebee webhook ingestion → materialize into `tenant_modules` (core repo
+   + service done in T22); wire the entitlement predicate into the live tool filter. Touches **O1**.
+4. **Live end-to-end demo** — drop `AEGIS_LLM_BASE_URL`/`AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS`) →
+   the multi-LLM gateway lights up; run the `/_ai/act` supervised flow against a live `expense`, or the
+   MCP stdio server into Claude Desktop. **Blocked on the founder** (gateway key).
 5. Generative-UI **renderer** (web/Unity) + **voice**; enterprise/compliance hardening.
 6. Keep **fully-autonomous (no-human) money writes GATED** per D19; **products/AR/omniscience GATED** per D20.
 
