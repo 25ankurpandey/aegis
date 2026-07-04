@@ -10,8 +10,9 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-02 (end of session T22). On branch **`feat/agentic-platform`** (main untouched).
-> Live infra up: aegis **Postgres @ 55432** (migrated) + **Redis @ 6380** (compose, override ports).
+> **Last updated:** 2026-07-04 (end of session T23). On branch **`feat/agentic-platform`**, now **pushed to
+> origin** = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
+> **Postgres @ 55432** (migrated) + **Redis @ 6380** (compose, override ports).
 
 ---
 
@@ -23,15 +24,41 @@ fully-designed **agentic-first, modular, governance-native platform**, with all 
 AND adversarially red-teamed. Since T14 we've been **building the agentic layer for real**, strictly inside
 the red-team's "safe first slice": everything is **read-only / propose-only** — the agent can discover and
 *call governed tools*, and *propose* dangerous actions, but **cannot autonomously write** to money/
-irreversible things. As of T21 the whole governed loop works and is tested (**103/103 ai-core tests**), the **D19 safety gate
-is complete** (`executeSupervisedWrite` composes AUTHORIZATION × DANGER × VERIFIABILITY — a supervised
-write executes only when the ceremony is satisfied AND the independent verifier passes, and a test proves
-the unsafe path never reaches execution), and it is now wrapped in a **running two-step propose→confirm
-flow** (broker + `expense` `/_ai/act` endpoints; typecheck-verified, needs infra to run live). Also shipped:
-conversation/session memory, generative UI-as-data, and the registry drift-gate. **Fully-autonomous
-(no-human) writes on money/irreversible stay off by design** (the ceremony requires human evidence).
+irreversible things. The whole governed loop works and is tested (**140/140 ai-core + 30/30 db tests** as of T23), the **D19
+safety gate is complete** (`executeSupervisedWrite` composes AUTHORIZATION × DANGER × VERIFIABILITY — a
+supervised write executes only when the ceremony is satisfied AND the independent verifier passes, and a
+test proves the unsafe path never reaches execution), and it is wrapped in a **running two-step
+propose→confirm flow** (broker + `expense` `/_ai/act` endpoints). On top of that we now run on **real
+infra** (pgvector Postgres + Redis) with a **multi-LLM gateway**, a **per-tenant entitlement store**, a
+**pgvector self-knowledge / RAG app-brain**, and the **first autonomous capability** — a propose-only
+self-audit that is verifier-gated and has no write path. **Fully-autonomous (no-human) writes on
+money/irreversible stay off by design** (the ceremony requires human evidence).
 
-### What we did last (T22) — branch + real infra + 3 infra-backed builds
+### What we did last (T23) — pgvector app-brain + first autonomous capability + branch pushed
+- **Recovered the prior run:** the two T23 build agents had been killed mid-flight by a session limit, but
+  their files were already on disk — GitHub Desktop had auto-stashed them when the branch was switched to
+  `main`. Restored via `git checkout feat/agentic-platform` + `git stash pop`; wrote the two app-brain tests
+  the killed agent hadn't reached.
+- **Infra → pgvector:** swapped the compose Postgres to `pgvector/pgvector:pg15` (same PG 15 major → the
+  volume + all 69 tables mounted unchanged; `vector` 0.8.4 installed and smoke-tested).
+- **pgvector app-brain** (`libs/db/src/brain/` + migration `0033_app_brain_memory`) — the per-tenant
+  self-knowledge / RAG store: `app_brain_memory` with a `vector(384)` column, HNSW cosine index,
+  partial-unique upsert index and **FORCE RLS**; a provider-agnostic `EmbeddingClient` seam (offline
+  deterministic `HashingEmbeddingClient` default — a real provider drops in when a key lands);
+  `AppBrainRepository` (`<=>` cosine recall, RLS-scoped) + `AppBrainService`. **9 tests** (5 offline + 4
+  live-pgvector recall / RLS-isolation / upsert).
+- **First autonomous capability — PROPOSE-ONLY self-audit** (`libs/ai-core/src/autonomy/`) —
+  `SelfAuditCapability` runs vetted deterministic checks, routes each finding through the SAME hardened
+  Trust Rule that guards autonomous writes (deterministic V1 ∧, for material blasts, a different-model V2),
+  and emits **proposals only** to an injected sink. Safety by construction: no executor dependency → no
+  write path; unverified material findings are `needs_human`. **6 tests** incl. the safety property.
+- **Git:** committed to `feat/agentic-platform` and **pushed to the founder's personal GitHub** (main untouched).
+- **Analysis (no code):** `docs/strategy/abac-generalization.md` — feasibility + plan to replace hardcoded
+  ABAC helpers with a DB-backed generic policy loader (the load-bearing prerequisite is a PIP that actually
+  populates `principal.attributes.teamIds`/`approvalLimit`, which login does NOT today).
+- **Totals:** ai-core **140/140** (18 suites); db **30/30** (5 suites, incl. live-pgvector app-brain); strict `tsc` clean.
+
+### What we did earlier (T22) — branch + real infra + 3 infra-backed builds
 - **Branch:** moved all work to **`feat/agentic-platform`** (main clean, nothing pushed). Committed checkpoints.
 - **Live infra (no mocks):** brought up the aegis-stack **Postgres @ 55432 (fully migrated, 68 tables)** +
   **Redis @ 6380** on override ports; `aegis_owner` for DDL, non-owner `aegis_app` for RLS runtime.
@@ -62,14 +89,17 @@ conversation/session memory, generative UI-as-data, and the registry drift-gate.
 - Plus (me): wired `deriveDangerFacts` to prefer a tool's explicit `riskTier`. **103/103 ai-core tests.**
 
 ### In flight right now
-- (nothing executing — T22 integrated and verified.)
+- (nothing executing — T23 integrated, verified, committed, and pushed.)
 
 ### What to do next
-- **pgvector app-brain** — set up a pgvector Postgres (swap the compose image / one-off container), then
-  build the per-tenant knowledge store + self-knowledge RAG (RLS-scoped). Infra-ready now that DB is up.
-- A first **autonomous capability** (self-audit / reconciliation) — propose-only, gated by verifier + human sample.
 - **Entitlement completion** — Chargebee webhook ingestion + materialization into `tenant_modules` (the
   core store + service now exist); wire the entitlement predicate into the live tool filter. Touches **O1**.
+- **Bring the app-brain online inside a capability** — index the tool registry + self-audit findings into
+  `app_brain_memory` so `recall()` answers "what can this tenant do / what did the last audit find?" A real
+  embedding provider drops in behind `EmbeddingClient` when a key lands.
+- **ABAC generalization build** (analysis done — see `docs/strategy/abac-generalization.md`): the DB-backed
+  generic policy loader + the PIP that populates `principal.attributes` (without it the amount-cap and
+  `own_and_team` rules silently no-op). Analysis-first; large correctness surface.
 - **Live end-to-end demo** with a real LLM gateway — *blocked on you*: drop `AEGIS_LLM_BASE_URL` +
   `AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS` JSON) → the multi-LLM gateway lights up; then run the
   `/_ai/act` supervised flow against a live `expense`, or the MCP stdio server into Claude Desktop.
@@ -85,10 +115,10 @@ are building the safe slice.)
 
 ## 🧱 Implementation ledger — what is REAL (built + tested)
 
-Everything below is committed code (branch `feat/agentic-platform`), green at T22: **ai-core 134/134
-(17 suites)** + **db 21/21** (incl. a live-Postgres RLS entitlement test) + strict typechecks clean;
-the 147 substrate lib tests unaffected. All within the **read-only / propose / human-supervised** safe
-slice (no fully-autonomous money writes).
+Everything below is committed code (branch `feat/agentic-platform`, pushed to origin), green at T23:
+**ai-core 140/140 (18 suites)** + **db 30/30 (5 suites)** (incl. live-Postgres RLS entitlement + live-pgvector
+app-brain tests) + strict typechecks clean; the 147 substrate lib tests unaffected. All within the
+**read-only / propose / human-supervised** safe slice (no fully-autonomous money writes).
 
 | Capability | Where | Status |
 |---|---|---|
@@ -117,6 +147,10 @@ slice (no fully-autonomous money writes).
 | **Module Entitlement Service** — `tenant_modules` (FORCE RLS) + repo + service + tool-filter predicate; **live-DB RLS test** | `libs/db/src/entitlement/*`, `apps/cli/src/migrations/0032_tenant_modules.ts` | ✅ T22 |
 | **Redis-backed durable stores** — `RedisConversationStore` + `RedisPendingActionStore` (TTL'd); **live-Redis test** | `libs/ai-core/src/persistence/*` | ✅ T22 |
 | **Local infra** — aegis Postgres @ 55432 (migrated) + Redis @ 6380 (compose, override ports) | docker compose | ✅ T22 |
+| **pgvector infra** — compose Postgres → `pgvector/pgvector:pg15` (volume + 69 tables unchanged; `vector` 0.8.4) | `docker-compose.yml` | ✅ T23 |
+| **pgvector app-brain** — `app_brain_memory` (`vector(384)`, HNSW cosine, partial-unique upsert, FORCE RLS) + `EmbeddingClient` seam (offline `HashingEmbeddingClient`) + `AppBrainRepository` (`<=>` recall) + `AppBrainService`; **9 tests (4 live-pgvector)** | `libs/db/src/brain/*`, `apps/cli/src/migrations/0033_app_brain_memory.ts` | ✅ T23 |
+| **First autonomous capability — PROPOSE-ONLY self-audit** — `SelfAuditCapability` (vetted deterministic checks → hardened Trust Rule → **proposals only**; no executor dependency = no write path by construction); **6 tests incl. safety property** | `libs/ai-core/src/autonomy/*` | ✅ T23 |
+| **ABAC generalization — ANALYSIS (no code)** — feasibility + target arch + plan + risks/tests for a DB-backed generic policy loader (+ the PIP prerequisite) | `docs/strategy/abac-generalization.md` | ✅ T23 (analysis) |
 
 ---
 
@@ -161,11 +195,13 @@ Legend: ✅ done · ◑ partial · ✗ not yet.
 6. Enterprise/compliance + autonomous-ops hardening (SOC2 track, GitOps/AIOps).
 7. **Gated behind decisions:** omniscience layer, AR ecosystem, Agentify/Policing products.
 
-*Done since this list was first written (T14–T22): the tool-registry generator, filter, tool-server,
+*Done since this list was first written (T14–T23): the tool-registry generator, filter, tool-server,
 MCP transport + stdio server, orchestrator + multi-LLM gateway (priority/selectable/fallback), danger
 layer (enforced), verifier, supervised-write path + running broker/endpoint, conversation memory,
 generative UI-as-data, registry drift-gate, riskTier wiring, manifest descriptions, the module
-entitlement core (`tenant_modules` + RLS, live-DB tested), and Redis-backed durable stores.*
+entitlement core (`tenant_modules` + RLS, live-DB tested), Redis-backed durable stores, the pgvector
+app-brain (self-knowledge / RAG, live-pgvector tested), and the first autonomous capability (propose-only
+self-audit). Analysis: ABAC generalization to data-driven policies.*
 
 **Hard gates (do NOT cross without the work + a passing "unsafe-path-blocked" test):** fully-autonomous
 money/irreversible writes (D19 — needs the supervised path proven + hardened); the products/AR (D20).

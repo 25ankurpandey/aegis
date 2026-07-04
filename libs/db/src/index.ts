@@ -19,6 +19,14 @@ export * from './entitlement/tenant-modules.repository';
 export * from './entitlement/entitlement.service';
 export * from './entitlement/tool-filter';
 
+// Per-tenant "app-brain" semantic-memory core (the `app_brain_memory` table): the pgvector-backed
+// self-knowledge / RAG store — types (incl. APP_BRAIN_EMBEDDING_DIM), the embedding seam, the
+// RLS-scoped repository, and the service that owns the embed step.
+export * from './brain/types';
+export * from './brain/embedding-client';
+export * from './brain/app-brain.repository';
+export * from './brain/app-brain.service';
+
 // Make per-tenant feature-flag lookups live: importing @aegis/db (which every DB-backed service does
 // at bootstrap via its models context) registers the DB-backed reader into the service-core helper,
 // so `FeatureFlags.isEnabled(...)` resolves against `tenant_features` instead of failing soft to off.

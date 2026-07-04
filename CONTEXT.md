@@ -280,9 +280,11 @@ build if a capability lacks a description/tier. Full: [stack-sufficiency.md], [a
 
 ## 12. Current build state (what's REAL vs DESIGNED — be honest)
 
-**REAL, shipping today** (branch `feat/agentic-platform`; all green: **ai-core 134/134 (17 suites)** +
-**db 21/21** incl. a **live-Postgres RLS entitlement test**; strict typechecks clean; 147 substrate tests
-unaffected; `expense` app typechecks. Local infra up: aegis Postgres @ 55432 (migrated) + Redis @ 6380):**
+**REAL, shipping today** (branch `feat/agentic-platform`, pushed to origin = personal GitHub
+`25ankurpandey/aegis`; all green: **ai-core 140/140 (18 suites)** + **db 30/30 (5 suites)** incl.
+**live-Postgres RLS entitlement + live-pgvector app-brain tests**; strict typechecks clean; 147 substrate
+tests unaffected; `expense` app typechecks. Local infra up: aegis **pgvector** Postgres @ 55432 (migrated)
++ Redis @ 6380):**
 - The **~46k-LOC access-control substrate** (see §6.2; `SPEC.md`/`IMPLEMENTATION_PLAN.md` authoritative).
 - **Metadata stamping** — `libs/service-core/src/bootstrap/route-metadata.ts`; `authorize()`/`validate()`
   stamp the `Permission` + Joi schema onto the handler (fixes the "trapped in closures" gap).
@@ -330,9 +332,20 @@ unaffected; `expense` app typechecks. Local infra up: aegis Postgres @ 55432 (mi
     `OpenAiCompatibleLlmClient` (covers OpenAI/LiteLLM/OpenRouter/Groq). Env-config lights it up when keys land.
   - **Redis-backed durable stores** (`src/persistence/`) — conversation + pending-action stores survive
     restarts (TTL'd), tested against live Redis.
+  - **first autonomous capability — PROPOSE-ONLY self-audit** (`src/autonomy/`) — `SelfAuditCapability`
+    runs vetted deterministic checks and routes each finding through the SAME hardened Trust Rule that
+    guards autonomous writes (deterministic V1 ∧, for material blasts, a different-model V2), emitting
+    **proposals only** to an injected sink. Safety by construction: `SelfAuditDeps` has no executor to
+    inject → no write path exists; an unverified material finding is `needs_human`; nothing auto-executes.
 - **`@aegis/db` entitlement core** (`libs/db/src/entitlement/` + migration `0032_tenant_modules`) — the
   pay-per-module spine's core: `tenant_modules` with FORCE RLS + `EntitlementService`
   (`isModuleEnabled`/`listEnabledModuleIds`) + a tool-filter predicate; proven with a live-Postgres RLS test.
+- **`@aegis/db` pgvector app-brain** (`libs/db/src/brain/` + migration `0033_app_brain_memory`) — the
+  per-tenant self-knowledge / RAG store: `app_brain_memory` (`vector(384)`, HNSW `vector_cosine_ops`
+  index, partial-unique `(tenant,kind,ref)` upsert, FORCE RLS) + a provider-agnostic `EmbeddingClient`
+  seam (offline deterministic `HashingEmbeddingClient` default — a real provider is a drop-in) +
+  `AppBrainRepository` (`<=>` cosine `searchSimilar`, RLS-scoped) + `AppBrainService`; proven with a
+  live-pgvector recall + RLS-isolation test.
 - **`apps/expense`** — `GET /expense/v1/_ai/tools` (capability catalog) + `POST /_ai/act` + `/_ai/act/:id/confirm` (the supervised-write flow).
 - **MCP stdio server** — `scripts/mcp/aegis-mcp-stdio.ts` (+ `AEGIS_MCP_README.md`): a Claude-Desktop-driveable
   MCP server over stdio (offline in-process app, or a live service via `AEGIS_SERVICE_BASE_URL`).

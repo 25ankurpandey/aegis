@@ -3,7 +3,8 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-02 (session T22). Branch **`feat/agentic-platform`**; live Postgres @ 55432 + Redis @ 6380 up.
+> **Last updated:** 2026-07-04 (session T23). Branch **`feat/agentic-platform`** (pushed to origin =
+> personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up.
 
 ## Phase
 **Design phase COMPLETE; BUILD phase STARTED.** All ten strategy docs written and adversarially
@@ -71,17 +72,35 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
   - **[T22] Redis-backed durable stores** (`libs/ai-core/src/persistence/`) — conversation + pending-action
     stores (TTL'd) survive restarts; **live-Redis test**.
   - **[T22] Infra:** aegis Postgres @ 55432 (migrated) + Redis @ 6380 (compose, override ports); branch `feat/agentic-platform`.
-  - **Totals:** `nx test ai-core` = **134/134** (17 suites) + `nx test db` = **21/21** (incl. live-DB entitlement); strict typechecks clean; expense app typechecks.
+  - **[T23] Infra → pgvector:** swapped the compose Postgres image to `pgvector/pgvector:pg15` (same PG 15
+    major → the `aegis_pg` volume + all 69 tables mounted unchanged; `vector` 0.8.4 now installed).
+  - **[T23] pgvector app-brain** (`libs/db/src/brain/` + migration `0033_app_brain_memory`) — the per-tenant
+    self-knowledge / RAG store: `app_brain_memory` (`vector(384)` col, HNSW `vector_cosine_ops` index,
+    partial-unique `(tenant,kind,ref)` upsert index, FORCE RLS) + provider-agnostic `EmbeddingClient` seam
+    (offline deterministic `HashingEmbeddingClient` default) + `AppBrainRepository` (`<=>` cosine recall,
+    RLS-scoped) + `AppBrainService` (owns the embed step). **9 tests** (5 offline embedding + 4 live-pgvector
+    recall/RLS-isolation/upsert integration).
+  - **[T23] First autonomous capability — PROPOSE-ONLY self-audit** (`libs/ai-core/src/autonomy/`) —
+    `SelfAuditCapability` runs vetted deterministic checks, pushes each finding through the SAME hardened
+    Trust Rule that guards autonomous writes (`assertTrustForAutonomousWrite` + different-model
+    `DualControlVerifier`), and emits **proposals only** to an injected sink. Safety invariant enforced by
+    construction: NO executor dependency, NO write path — a material finding that is not independently
+    verified is `needs_human`; nothing is ever auto-executed. **6 tests** (incl. the safety property).
+  - **Totals:** `nx test ai-core` = **140/140** (18 suites) + `nx test db` = **30/30** (5 suites, incl. the
+    live-pgvector app-brain + live-DB entitlement tests); strict `tsc --noEmit` clean; expense app typechecks.
 
 ## In progress
 - (nothing executing right now.)
 
 ## Next (recommended order)
-1. **pgvector app-brain** — stand up a pgvector Postgres (swap compose image / one-off container), then the
-   per-tenant knowledge store + self-knowledge RAG (RLS-scoped). Infra now available.
-2. A first **autonomous capability** (self-audit / reconciliation) — propose-only, gated by verifier + human sample.
-3. **Entitlement completion** — Chargebee webhook ingestion → materialize into `tenant_modules` (core repo
+1. **Entitlement completion** — Chargebee webhook ingestion → materialize into `tenant_modules` (core repo
    + service done in T22); wire the entitlement predicate into the live tool filter. Touches **O1**.
+2. **Wire the app-brain into a capability** — feed the tool registry + audit findings into `app_brain_memory`
+   so recall answers "what can this tenant do / what did the last audit find?" (self-knowledge RAG online).
+   A real embedding provider drops in behind `EmbeddingClient` when a key lands.
+3. **ABAC generalization (data-driven policies)** — replace hardcoded `amountCapPolicies(...)` with a
+   DB-backed policy loader (persisted `policies` → `AccessShape.PolicyRule[]`, Redis cache, PIP for team/limit
+   attributes). Analysis doc: `docs/strategy/abac-generalization.md`. Analysis-first; big correctness surface.
 4. **Live end-to-end demo** — drop `AEGIS_LLM_BASE_URL`/`AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS`) →
    the multi-LLM gateway lights up; run the `/_ai/act` supervised flow against a live `expense`, or the
    MCP stdio server into Claude Desktop. **Blocked on the founder** (gateway key).

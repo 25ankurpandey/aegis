@@ -41,3 +41,6 @@ export * from './llm/llm-factory';
 export * from './persistence/redis-conversation-store';
 export * from './persistence/redis-pending-action-store';
 export * from './persistence/redis-stores';
+// The FIRST autonomous capability: the PROPOSE-ONLY self-audit (verifier-gated; no write path).
+export * from './autonomy/types';
+export * from './autonomy/self-audit';

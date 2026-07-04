@@ -317,4 +317,55 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T23.*
+## T23 — 2026-07-04 · pgvector app-brain + first autonomous capability (propose-only self-audit) + push
+
+- **Ask:** rerun the parallel agents to finish the T22-next passes; continue + complete the implementation;
+  push `feat/agentic-platform` to the founder's personal GitHub (they'd been switched to `main` via GitHub
+  Desktop); keep all handoff docs current; and separately **analyze** (no code) a proposal to generalize
+  ABAC into data-driven policies.
+- **Recovery:** the two background build agents from the prior turn were killed by a session limit, but they
+  had already WRITTEN their files — GitHub Desktop auto-stashed the uncommitted work when the branch was
+  switched to `main`. Recovered by `git checkout feat/agentic-platform` + `git stash pop` (restored the
+  migration, `libs/db/src/brain/*`, `libs/ai-core/src/autonomy/*`, the self-audit spec, and the
+  docker-compose pgvector edit). The two app-brain test files hadn't been reached — the caller wrote them.
+- **Infra → pgvector:** swapped the compose Postgres image to `pgvector/pgvector:pg15` (PG 15 major
+  unchanged → `aegis_pg` volume + all 69 tables mounted as-is; `vector` 0.8.4 installed; L2/cosine
+  smoke-tested; Redis untouched). Removed the obsolete compose `version:` key.
+- **Done (2 tracks, integrated + verified by the caller):**
+  - **(1) pgvector app-brain** (`libs/db/src/brain/` + `apps/cli/src/migrations/0033_app_brain_memory.ts`) —
+    the per-tenant self-knowledge / RAG store. `app_brain_memory`: `vector(384)` column, HNSW
+    `vector_cosine_ops` index, partial-unique `(tenant_id, kind, ref) WHERE ref IS NOT NULL` upsert index,
+    FORCE + RESTRICTIVE RLS, `aegis_app` grants. `EmbeddingClient` seam + offline deterministic
+    `HashingEmbeddingClient` (FNV-1a bag-of-tokens, L2-normalized — real provider is a drop-in);
+    `AppBrainRepository` (`<=>` cosine `searchSimilar`, RLS-scoped `remember`/`deleteByRef`);
+    `AppBrainService` (owns embed). Migration APPLIED to the live DB; schema verified. **9 tests** (5 offline
+    embedding determinism/normalization/similarity + 4 live-pgvector recall-ranking / RLS-isolation / upsert).
+  - **(2) First autonomous capability — PROPOSE-ONLY self-audit** (`libs/ai-core/src/autonomy/`) —
+    `SelfAuditCapability` runs vetted DETERMINISTIC checks (LLM never authors them), routes each finding
+    through the SAME hardened Trust Rule that guards autonomous writes (V1 deterministic AND, for material
+    blasts, a different-model V2 `DualControlVerifier`), and emits **proposals only** to an injected sink.
+    Safety invariant enforced BY CONSTRUCTION: `SelfAuditDeps` has no executor to inject → no `invokeTool` /
+    `executeSupervisedWrite` / broker → nothing is ever auto-executed; unverified material findings are
+    `needs_human`. **6 tests** incl. the explicit safety property.
+  - **Integration (caller):** wired both barrels (`libs/db` +4 brain exports, `libs/ai-core` +2 autonomy
+    exports) and the migration index (`0033`); wrote the two app-brain test files; ran the migration; fixed
+    one test-only import (`APP_BRAIN_EMBEDDING_DIM` is exported from `brain/types`, not `brain/embedding-client`).
+- **Verified:** `nx test db` = **30/30** (5 suites) · `nx test ai-core` = **140/140** (18 suites) · strict
+  `tsc --noEmit` over all new files + graph = clean.
+- **Git:** committed to `feat/agentic-platform`; **pushed `-u origin feat/agentic-platform`** to
+  https://github.com/25ankurpandey/aegis (the branch now exists on the founder's personal GitHub; `main`
+  untouched).
+- **Analysis deliverable (no code):** `docs/strategy/abac-generalization.md` — feasibility + target
+  architecture + step-by-step plan + risks/tests for replacing hardcoded ABAC helpers (`amountCapPolicies`)
+  with a DB-backed generic policy loader (persisted `policies` → `AccessShape.PolicyRule[]`, Redis
+  tenant+permission cache with PAP-driven invalidation, a PIP to populate `principal.attributes` —
+  `teamIds`/`approvalLimit` — that login does NOT currently set), plus the `memberships` (many-tenant
+  identity) question. Verdict: high-value, feasible, incremental; the load-bearing prerequisite is the PIP
+  (today `own_and_team` and the amount-cap rule silently no-op because those attributes are never populated).
+- **Next:** entitlement completion (Chargebee → tenant_modules; wire live tool filter); bring the app-brain
+  online inside a capability; the ABAC generalization build (analysis-first); then the founder's LLM key →
+  live end-to-end demo. Autonomous money writes stay gated (D19); products/AR/omniscience gated (D20).
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T24.*

@@ -1,10 +1,13 @@
 # Local development dependencies for Aegis.
 # Postgres runs the app under a NON-OWNER role so Row-Level Security is actually enforced.
-version: "3.9"
-
 services:
   postgres:
-    image: postgres:15-alpine
+    # pgvector/pgvector:pg15 == PostgreSQL 15 + the `vector` extension (the app-brain / self-knowledge
+    # RAG store needs it). Same PG major as the previous postgres:15-alpine image, so the aegis_pg volume
+    # mounts unchanged; only `CREATE EXTENSION vector` becomes available. NOTE: alpine(musl)→debian(glibc)
+    # swap can emit a one-time collation-version-mismatch WARNING on existing indexes — harmless in dev;
+    # `REINDEX DATABASE aegis;` clears it if desired.
+    image: pgvector/pgvector:pg15
     environment:
       POSTGRES_DB: aegis
       POSTGRES_USER: aegis_owner
