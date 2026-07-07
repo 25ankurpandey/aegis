@@ -26,9 +26,19 @@ export interface RememberInput {
   kind: AppBrainKind;
   /** Stable external key within (tenant, kind); when non-null the write upserts on it. */
   ref?: string | null;
+  /**
+   * SUPERSESSION key (Wayfinder memory semantics): when non-blank, `remember` first
+   * soft-invalidates (sets `valid_to = now()`) every LIVE row of the same tenant whose trimmed
+   * lower(subject) matches, then inserts — so "my car is on level 5" REPLACES "…level 3" instead of
+   * accumulating stale duplicates. Blank/absent supersedes nothing (subject-less facts never
+   * collide). Stored trimmed (original case); matched case-insensitively.
+   */
+  subject?: string | null;
   title?: string | null;
   content: string;
   metadata?: Record<string, unknown> | null;
+  /** Optional salience weight (caller-defined scale; stored, not yet used for ranking). */
+  importance?: number | null;
 }
 
 /** An `app_brain_memory` row as read back from the DB (tenant-scoped via RLS; no embedding column). */
@@ -37,9 +47,25 @@ export interface AppBrainMemory {
   tenantId: string;
   kind: AppBrainKind;
   ref: string | null;
+  /** Supersession key (see {@link RememberInput.subject}); null for subject-less memories. */
+  subject: string | null;
   title: string | null;
   content: string;
   metadata: Record<string, unknown> | null;
+  /**
+   * Vector-SPACE tag of the stored embedding (e.g. `fnv1a-bow-384/v1`). Recall only ever compares
+   * rows in the SAME space as the querying {@link import('./embedding-client').EmbeddingClient} —
+   * vector spaces must never be mixed.
+   */
+  embedder: string;
+  /** Optional salience weight as stored (see {@link RememberInput.importance}). */
+  importance: number | null;
+  /**
+   * Soft-invalidation tombstone (Zep/Graphiti-style `valid_to`, per ADR-0001): NULL = LIVE; set =
+   * superseded or forgotten. Dead rows are kept for audit/history but excluded from every read path
+   * (recall/profile/salient).
+   */
+  validTo: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

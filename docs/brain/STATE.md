@@ -3,8 +3,9 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-04 (session T23). Branch **`feat/agentic-platform`** (pushed to origin =
-> personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up.
+> **Last updated:** 2026-07-07 (session T24). Branch **`feat/agentic-platform`** (pushed to origin =
+> personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
+> note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
 ## Phase
 **Design phase COMPLETE; BUILD phase STARTED.** All ten strategy docs written and adversarially
@@ -86,26 +87,44 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     `DualControlVerifier`), and emits **proposals only** to an injected sink. Safety invariant enforced by
     construction: NO executor dependency, NO write path — a material finding that is not independently
     verified is `needs_human`; nothing is ever auto-executed. **6 tests** (incl. the safety property).
-  - **Totals:** `nx test ai-core` = **140/140** (18 suites) + `nx test db` = **30/30** (5 suites, incl. the
-    live-pgvector app-brain + live-DB entitlement tests); strict `tsc --noEmit` clean; expense app typechecks.
+  - **[T24] Agent memory — the Wayfinder port** (`libs/ai-core/src/agent-memory/` + `libs/db/src/brain/` v2 +
+    migration `0034_app_brain_memory_v2`) — supersede-by-subject (atomic, RLS-scoped), soft-invalidation
+    (`valid_to`), embedder-space tagging, minScore recall, `profile()`/`salient()` tiers; the 3 memory tools
+    (`memory_remember`/`recall`/`forget` — decisions = kind `decision`) as danger-gated BUILT-IN tools;
+    tiered `[MEMORY]` context injection in `runConversation`; mem0-style post-turn extraction
+    (ADD/UPDATE/DELETE/NOOP, confidence-gated, fail-soft). Design doc: `docs/brain/designs/agent-memory.md`.
+  - **[T24] App-brain ONLINE** (`libs/db/src/brain/indexers.ts`) — `indexTools` + `indexAuditProposal`
+    materialize the tool registry and audit findings into `app_brain_memory`; live test proves recall
+    ("create an expense") ranks the expense tool first.
+  - **[T24] Entitlement loop CLOSED** (`libs/db/src/entitlement/chargebee-webhook.ts` + user-management
+    `POST /webhooks/chargebee` + expense wiring) — Chargebee events → idempotent `tenant_modules` upserts
+    (at-least-once safe; paid-through-grace on cancel; strict UUID tenant from `cf_tenant_id`); the
+    entitlement predicate now gates the LIVE tool surface (list + invoke identically) behind
+    `AEGIS_ENTITLEMENT_FILTER=on` (default OFF/fail-open — flip after billing ingestion populates rows).
+  - **[T24] ABAC Phase 0 shipped (dormant)** (`libs/access-control/src/policy-{row-mapper,ports}.ts` +
+    PAP write-time hardening in user-management + `scripts/abac/audit-policies.ts`) — the PolicyRow→PolicyRule
+    mapper (all-or-nothing load, `$attr` validation, scope/wildcard-allow bans), port interfaces, and PAP
+    rejection of invalid policies. NO authorize() behavior change. Per `docs/strategy/abac-generalization.md` §5.
+  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **69/69** (8 suites, live
+    pgvector/RLS/Chargebee) · `nx test access-control` = **104/104** (9 suites); strict `tsc --noEmit` clean;
+    expense + user-management apps typecheck.
 
 ## In progress
 - (nothing executing right now.)
 
 ## Next (recommended order)
-1. **Entitlement completion** — Chargebee webhook ingestion → materialize into `tenant_modules` (core repo
-   + service done in T22); wire the entitlement predicate into the live tool filter. Touches **O1**.
-2. **Wire the app-brain into a capability** — feed the tool registry + audit findings into `app_brain_memory`
-   so recall answers "what can this tenant do / what did the last audit find?" (self-knowledge RAG online).
-   A real embedding provider drops in behind `EmbeddingClient` when a key lands.
-3. **ABAC generalization (data-driven policies)** — replace hardcoded `amountCapPolicies(...)` with a
-   DB-backed policy loader (persisted `policies` → `AccessShape.PolicyRule[]`, Redis cache, PIP for team/limit
-   attributes). Analysis doc: `docs/strategy/abac-generalization.md`. Analysis-first; big correctness surface.
-4. **Live end-to-end demo** — drop `AEGIS_LLM_BASE_URL`/`AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS`) →
-   the multi-LLM gateway lights up; run the `/_ai/act` supervised flow against a live `expense`, or the
-   MCP stdio server into Claude Desktop. **Blocked on the founder** (gateway key).
-5. Generative-UI **renderer** (web/Unity) + **voice**; enterprise/compliance hardening.
-6. Keep **fully-autonomous (no-human) money writes GATED** per D19; **products/AR/omniscience GATED** per D20.
+1. **ABAC Phase 1** (per `docs/strategy/abac-generalization.md` §5) — `dbPolicies(action)` + the shared-DB
+   `PolicyReadPort` implementation + bootstrap registration in expense; wire `combinePolicies(db, amountCap)`
+   on the two expense approve routes behind a flag; seed a resource-only deny policy; then **Phase 2 = the PIP**
+   (populate `principal.attributes.teamIds`/`approvalLimit` — the load-bearing prerequisite).
+2. **Live end-to-end demo** — drop `AEGIS_LLM_BASE_URL`/`AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS`) →
+   the multi-LLM gateway lights up; run the `/_ai/act` supervised flow + agent memory against a live
+   `expense`, or the MCP stdio server into Claude Desktop. **Blocked on the founder** (gateway key). Also
+   founder-side: a real embedding provider key upgrades app-brain recall from lexical to semantic.
+3. **Memory-in-anger** — run the self-audit capability on real seeded data, index its findings via
+   `indexAuditProposal`, and exercise post-turn extraction end-to-end with the live gateway.
+4. Generative-UI **renderer** (web/Unity) + **voice**; enterprise/compliance hardening.
+5. Keep **fully-autonomous (no-human) money writes GATED** per D19; **products/AR/omniscience GATED** per D20.
 
 ## Gating open questions (need the founder — see discussions/README.md)
 O1 ecosystem scope · O2 dogfood vs sell-first · O4 pace/ownership of the build · O5 YC timing · O7

@@ -26,6 +26,10 @@ export * from './brain/types';
 export * from './brain/embedding-client';
 export * from './brain/app-brain.repository';
 export * from './brain/app-brain.service';
+export * from './brain/indexers';
+
+// Chargebee webhook → entitlement materialization (pure event mapper + idempotent applier).
+export * from './entitlement/chargebee-webhook';
 
 // Make per-tenant feature-flag lookups live: importing @aegis/db (which every DB-backed service does
 // at bootstrap via its models context) registers the DB-backed reader into the service-core helper,

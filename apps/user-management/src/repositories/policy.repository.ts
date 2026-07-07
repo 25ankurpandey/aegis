@@ -21,6 +21,12 @@ export class PolicyRepository {
     return row.get({ plain: true }) as UserManagementShape.PolicyRow;
   }
 
+  async findById(id: string, t: Transaction): Promise<UserManagementShape.PolicyRow | null> {
+    const { Policy } = getIdentityContext();
+    const row = await Policy.findByPk(id, { transaction: t });
+    return row ? (row.get({ plain: true }) as UserManagementShape.PolicyRow) : null;
+  }
+
   async update(
     id: string,
     patch: UserManagementShape.UpdatePolicyRow,

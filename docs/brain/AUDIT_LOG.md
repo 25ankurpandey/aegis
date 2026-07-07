@@ -368,4 +368,56 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T24.*
+## T24 — 2026-07-07 · Wayfinder memory port + app-brain online + Chargebee loop closed + ABAC Phase 0
+
+- **Ask:** "use the workflow and start implementing everything possible in parallel"; study the founder's
+  Wayfinder repos' embedding/memory infrastructure (Android/VR-constrained there) and port what applies
+  (server-side Aegis can be more flexible).
+- **Wayfinder study:** found the memory architecture in `~/Documents/GitHub/Wayfinder` — ADR-0001 (memory =
+  Postgres + pgvector, NOT a markdown vault — same store we already built), `MemoryStore.kt`
+  (supersede-by-subject, tombstones, embedder-space tags, minScore, profile/salient), tiered retrieval
+  (Letta), the 3 memory tools, mem0 post-turn extraction. Ported the semantics; DROPPED the local-first
+  machinery (sync engine, LWW cursors, push queues, brute-force scans) — Aegis is Postgres-authoritative
+  with HNSW + RLS. Mapping doc: `docs/brain/designs/agent-memory.md`.
+- **Interrupted + recovered (twice-proven pattern):** the 4-track workflow was killed by a session limit
+  after 1 track finished — but the other 3 had already written most files. Inventoried via git status,
+  restarted the exited compose containers (Docker restart had stopped them), ran the landed specs
+  (agent-memory 14/14, chargebee 27/27 — green as landed), spawned ONE completion agent for the
+  half-done ABAC track, and finished the small gaps (live chargebee spec, design doc, wiring) myself.
+- **Done (4 tracks, integrated + verified):**
+  - **(1) db-memory** — migration `0034_app_brain_memory_v2` (subject/embedder/importance/valid_to +
+    partial supersede index); v2 repo/service: atomic supersede-by-subject inside `withTenantTransaction`,
+    soft-invalidation everywhere (reads filter `valid_to IS NULL`; ref-upsert REVIVES dead rows keeping the
+    one-row-per-ref invariant), minScore (`distance <= 1 - minScore`), embedder filter, deterministic
+    `profile()`/`salient()`. Plus `indexers.ts` (indexTools/indexAuditProposal → the app-brain is ONLINE;
+    live test: recall ranks the expense tool first).
+  - **(2) agent-memory (ai-core)** — `AgentMemoryStore` structural seam (AppBrainService satisfies it; libs
+    stay decoupled); `makeMemoryTools` (remember/recall/forget as BUILT-IN tools with declared danger facts —
+    run through the SAME `evaluateActionGate`; a risky builtin gets `needs_ceremony`, tested); `buildMemoryContext`
+    (Tier-0 profile ≤40 + Tier-1 salient ≤10 `[MEMORY]` preamble, fail-soft); `extractMemoryOps`/`applyMemoryOps`
+    (mem0: strict-JSON ops, malformed ⇒ [], minConfidence 0.7); `runAgentTurn` gained `builtinTools` (registry
+    wins name collisions), `runConversation` gained `agentMemory`. 14 new tests.
+  - **(3) entitlement-live** — `chargebee-webhook.ts` pure mapper (strict UUID tenant from `cf_tenant_id`,
+    unmapped skipped never guessed; created/activated/changed/resumed/reactivated → active; cancelled →
+    paid-through-grace via `current_term_end`; deleted/paused → off; at-least-once safe by upsert; out-of-order
+    caveat documented) + user-management `POST /webhooks/chargebee` (Basic auth, hash-then-timingSafeEqual,
+    fail-closed unconfigured, always-200 on auth success, NOT in the tool registry) + expense `entitlementGate`
+    behind `AEGIS_ENTITLEMENT_FILTER=on` (default OFF/fail-open, documented; list + invoke share ONE predicate).
+    Live integration test: created→enabled under RLS, replay-idempotent (1 row), deleted→disabled,
+    suite-plan multi-module, future/past term-end grace.
+  - **(4) ABAC Phase 0 (dormant)** — landed mapper/ports verified doc-conformant; completion agent added PAP
+    write-time hardening (Joi + service-level MERGED-row validation on PATCH — catches effect-flip-to-allow on
+    a `'*'` row; `ErrUtils.validation` idiom), `scripts/abac/audit-policies.ts` (owner `row_security = off`
+    audit; smoke-ran: 0 rows, safe for Phase 1), and 51 tests (44 mapper incl. all-or-nothing BOTH effects,
+    12 malformed envelopes, 7 malformed `$attr`; 7 ports). No authorize() change.
+  - **Integration (caller):** barrels (db +2, ai-core +4, access-control +2), migration index (0034), ran the
+    migration, flipped deep imports → `@aegis/access-control`, deleted 2 stray `Untitled` files, wrote the live
+    chargebee spec + the design doc.
+- **Verified:** ai-core **154/154** (19 suites) · db **69/69** (8 suites, all live vs pgvector) ·
+  access-control **104/104** (9 suites) · expense + user-management typecheck · strict tsc over new files clean.
+- **Next:** ABAC Phase 1 (dbPolicies + port impl + expense approve routes behind flag) then Phase 2 (the PIP);
+  live e2e demo + semantic embeddings (founder keys); run self-audit in anger + index findings.
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T25.*

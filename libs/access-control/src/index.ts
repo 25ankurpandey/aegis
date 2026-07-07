@@ -9,6 +9,8 @@
  *  - condition-evaluator  ABAC condition operators
  *  - watcher.ts           Redis pub/sub policy-reload bus (PAP mutations reach running pods, W5-03)
  *  - policy-loader.ts     load applicable ABAC policies from the PAP/DB for authorize() (W5-04)
+ *  - policy-row-mapper.ts PolicyRow → PolicyRule mapper + PAP write validation (ABAC Phase 0)
+ *  - policy-ports.ts      PolicyReadPort/AttributeReadPort registry (per-service bootstrap)
  * See docs/03-access-control-model.md.
  */
 export * from './enforcer';
@@ -18,3 +20,6 @@ export * from './pdp';
 export * from './pep';
 export * from './watcher';
 export * from './policy-loader';
+// ABAC Phase 0 (dormant until a PolicyReadPort is registered — docs/strategy/abac-generalization.md §5):
+export * from './policy-row-mapper';
+export * from './policy-ports';

@@ -1,5 +1,8 @@
 import { runAgentTurn, type AegisTurnResult, type RunAgentTurnParams } from '../orchestrator/agent-orchestrator';
 import { sessionKey, type ConversationStore, type ConversationTurn } from './conversation-store';
+import type { AgentMemoryStore } from '../agent-memory/types';
+import { makeMemoryTools } from '../agent-memory/memory-tools';
+import { buildMemoryContext } from '../agent-memory/memory-context';
 
 /**
  * MEMORY WRAPPER around {@link runAgentTurn}: it does NOT touch the orchestrator (governance stays where
@@ -8,7 +11,22 @@ import { sessionKey, type ConversationStore, type ConversationTurn } from './con
  *
  * Isolation lives in the key ({@link sessionKey}), never in this logic — two sessions/tenants using this
  * wrapper cannot see each other's history because they resolve to different keys.
+ *
+ * LONG-TERM AGENT MEMORY (optional, additive): pass {@link RunConversationParams.agentMemory} to give
+ * the turn Wayfinder-style tiered memory on top of the raw transcript — the Tier-0/Tier-1
+ * `[MEMORY]` preamble ({@link buildMemoryContext}) is prepended as a `system` context message, and the
+ * three built-in memory tools ({@link makeMemoryTools}) are offered so the model can remember / recall /
+ * forget through the RLS-scoped store the caller injected. Fail-soft: an empty or failing memory store
+ * leaves the turn byte-identical to a memory-less one.
  */
+
+/** Optional long-term agent memory wiring for a turn. */
+export interface AgentMemoryOptions {
+  /** The governed (RLS-scoped) memory store — tenant isolation lives in the store the caller injects. */
+  store: AgentMemoryStore;
+  /** Prepend the Tier-0/Tier-1 `[MEMORY]` preamble as a system context message. Default true. */
+  injectContext?: boolean;
+}
 
 /** Inputs to a memory-backed turn. `turnParams` is everything {@link runAgentTurn} needs EXCEPT `history`. */
 export interface RunConversationParams {
@@ -17,6 +35,8 @@ export interface RunConversationParams {
   sessionId: string;
   /** The {@link RunAgentTurnParams} minus `history` — history is supplied by the store. */
   turnParams: Omit<RunAgentTurnParams, 'history'>;
+  /** Optional long-term memory: memory tools + tiered context over an injected {@link AgentMemoryStore}. */
+  agentMemory?: AgentMemoryOptions;
 }
 
 /** Reduce a completed turn to a single compact record for the conversation log. */
@@ -46,13 +66,32 @@ function outcomeTurn(result: AegisTurnResult, at: number): ConversationTurn {
  * appends the user message and a compact outcome record. Returns the {@link AegisTurnResult} unchanged.
  */
 export async function runConversation(params: RunConversationParams): Promise<AegisTurnResult> {
-  const { store, tenantId, sessionId, turnParams } = params;
+  const { store, tenantId, sessionId, turnParams, agentMemory } = params;
   const key = sessionKey(tenantId, sessionId);
 
   const prior = await store.history(key);
-  const history = prior.map((t) => ({ role: t.role, content: t.content }));
+  let history = prior.map((t) => ({ role: t.role, content: t.content }));
 
-  const result = await runAgentTurn({ ...turnParams, history });
+  let builtinTools = turnParams.builtinTools;
+  if (agentMemory) {
+    // Offer the three memory tools ON TOP of any builtins the caller already passed (per-turn, so
+    // the tools always close over the caller's RLS-scoped store — never a cached one).
+    builtinTools = [...(turnParams.builtinTools ?? []), ...makeMemoryTools(agentMemory.store)];
+
+    if (agentMemory.injectContext !== false) {
+      // Tier-0/Tier-1 preamble as a per-turn SYSTEM context message. buildMemoryContext is fail-soft
+      // ("" on empty store or store error), and a blank block is NOT injected — a memory-less turn
+      // stays byte-identical to today's. The preamble is never persisted to the conversation record.
+      const memoryBlock = await buildMemoryContext(agentMemory.store);
+      if (memoryBlock) history = [{ role: 'system', content: memoryBlock }, ...history];
+    }
+  }
+
+  const result = await runAgentTurn({
+    ...turnParams,
+    ...(builtinTools ? { builtinTools } : {}),
+    history,
+  });
 
   const now = Date.now();
   await store.append(key, { role: 'user', content: turnParams.userMessage, at: now });

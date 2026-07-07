@@ -10,9 +10,10 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-04 (end of session T23). On branch **`feat/agentic-platform`**, now **pushed to
-> origin** = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
-> **Postgres @ 55432** (migrated) + **Redis @ 6380** (compose, override ports).
+> **Last updated:** 2026-07-07 (end of session T24). On branch **`feat/agentic-platform`**, pushed to
+> origin = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
+> **Postgres @ 55432** (migrated through 0034) + **Redis @ 6380**. (A Docker restart stops them:
+> `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`.)
 
 ---
 
@@ -34,7 +35,30 @@ infra** (pgvector Postgres + Redis) with a **multi-LLM gateway**, a **per-tenant
 self-audit that is verifier-gated and has no write path. **Fully-autonomous (no-human) writes on
 money/irreversible stay off by design** (the ceremony requires human evidence).
 
-### What we did last (T23) — pgvector app-brain + first autonomous capability + branch pushed
+### What we did last (T24) — the Wayfinder memory port + app-brain online + billing loop closed + ABAC Phase 0
+- **Studied your Wayfinder memory/embedding infra** (`~/Documents/GitHub/Wayfinder`: ADR-0001, MemoryStore.kt,
+  MemoryContextProvider.kt) and **ported the semantics, not the machinery**: supersede-by-subject,
+  soft-invalidation (`valid_to`), embedder-space tagging, minScore recall, profile/salient tiers, the 3 memory
+  tools, tiered Tier-0/1/2 retrieval (Letta), mem0 post-turn extraction. Dropped (server-side): sync engine,
+  LWW cursors, push queues, brute-force scans — Aegis is Postgres-authoritative, HNSW-indexed, RLS-isolated.
+  Mapping: `docs/brain/designs/agent-memory.md`.
+- **Agent memory shipped end-to-end:** migration `0034` + v2 brain store; `memory_remember`/`recall`/`forget`
+  as danger-gated BUILT-IN tools (a risky builtin → `needs_ceremony`, tested); `[MEMORY]` context injection in
+  `runConversation`; confidence-gated ADD/UPDATE/DELETE/NOOP extraction — all fail-soft (memory never crashes a turn).
+- **App-brain ONLINE:** `indexTools`/`indexAuditProposal` materialize the tool registry + audit findings; live
+  recall test ranks the expense tool first for "create an expense".
+- **Chargebee loop CLOSED:** webhook (Basic-auth, timing-safe, fail-closed) → pure event mapper (strict UUID
+  tenant, paid-through-grace on cancel, at-least-once-safe upserts) → `tenant_modules`; the entitlement
+  predicate now gates the LIVE tool surface (list+invoke, one predicate) behind `AEGIS_ENTITLEMENT_FILTER=on`
+  (default OFF/fail-open until billing populates rows).
+- **ABAC Phase 0 shipped (dormant):** mapper + ports + PAP write-time hardening (merged-row PATCH validation)
+  + the one-time audit script (smoke-ran clean). Zero authorize() behavior change — Phase 1 is next.
+- **Resilience note:** the workflow was limit-killed mid-run again; recovered everything from disk (the killed
+  agents' work was largely complete + green), one completion agent finished ABAC, caller filled small gaps.
+- **Totals:** ai-core **154/154** (19 suites) · db **69/69** (8 suites, live) · access-control **104/104**
+  (9 suites) · both apps typecheck · strict tsc clean.
+
+### What we did earlier (T23) — pgvector app-brain + first autonomous capability + branch pushed
 - **Recovered the prior run:** the two T23 build agents had been killed mid-flight by a session limit, but
   their files were already on disk — GitHub Desktop had auto-stashed them when the branch was switched to
   `main`. Restored via `git checkout feat/agentic-platform` + `git stash pop`; wrote the two app-brain tests
@@ -92,14 +116,14 @@ money/irreversible stay off by design** (the ceremony requires human evidence).
 - (nothing executing — T23 integrated, verified, committed, and pushed.)
 
 ### What to do next
-- **Entitlement completion** — Chargebee webhook ingestion + materialization into `tenant_modules` (the
-  core store + service now exist); wire the entitlement predicate into the live tool filter. Touches **O1**.
-- **Bring the app-brain online inside a capability** — index the tool registry + self-audit findings into
-  `app_brain_memory` so `recall()` answers "what can this tenant do / what did the last audit find?" A real
-  embedding provider drops in behind `EmbeddingClient` when a key lands.
-- **ABAC generalization build** (analysis done — see `docs/strategy/abac-generalization.md`): the DB-backed
-  generic policy loader + the PIP that populates `principal.attributes` (without it the amount-cap and
-  `own_and_team` rules silently no-op). Analysis-first; large correctness surface.
+- **ABAC Phase 1** (`docs/strategy/abac-generalization.md` §5): `dbPolicies(action)` + the shared-DB
+  `PolicyReadPort` impl + expense bootstrap registration; `combinePolicies(db, amountCap)` on the two expense
+  approve routes behind a flag; seed a resource-only deny; then **Phase 2 = the PIP** (populate
+  `principal.attributes.teamIds`/`approvalLimit` — the prerequisite that makes the amount-cap actually deny).
+- **Run memory + self-audit in anger** — seed data, run the self-audit, `indexAuditProposal` its findings,
+  exercise recall + post-turn extraction end-to-end once the LLM gateway key lands.
+- **Founder unlocks:** the LLM gateway key (live e2e demo: `/_ai/act` + memory tools via Claude Desktop/MCP)
+  and an embedding-provider key (app-brain recall goes from lexical to semantic behind the seam).
 - **Live end-to-end demo** with a real LLM gateway — *blocked on you*: drop `AEGIS_LLM_BASE_URL` +
   `AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS` JSON) → the multi-LLM gateway lights up; then run the
   `/_ai/act` supervised flow against a live `expense`, or the MCP stdio server into Claude Desktop.
@@ -115,9 +139,9 @@ are building the safe slice.)
 
 ## 🧱 Implementation ledger — what is REAL (built + tested)
 
-Everything below is committed code (branch `feat/agentic-platform`, pushed to origin), green at T23:
-**ai-core 140/140 (18 suites)** + **db 30/30 (5 suites)** (incl. live-Postgres RLS entitlement + live-pgvector
-app-brain tests) + strict typechecks clean; the 147 substrate lib tests unaffected. All within the
+Everything below is committed code (branch `feat/agentic-platform`, pushed to origin), green at T24:
+**ai-core 154/154 (19 suites)** + **db 69/69 (8 suites, live pgvector/RLS/Chargebee)** + **access-control
+104/104 (9 suites)** + both apps typecheck + strict tsc clean. All within the
 **read-only / propose / human-supervised** safe slice (no fully-autonomous money writes).
 
 | Capability | Where | Status |
@@ -151,6 +175,10 @@ app-brain tests) + strict typechecks clean; the 147 substrate lib tests unaffect
 | **pgvector app-brain** — `app_brain_memory` (`vector(384)`, HNSW cosine, partial-unique upsert, FORCE RLS) + `EmbeddingClient` seam (offline `HashingEmbeddingClient`) + `AppBrainRepository` (`<=>` recall) + `AppBrainService`; **9 tests (4 live-pgvector)** | `libs/db/src/brain/*`, `apps/cli/src/migrations/0033_app_brain_memory.ts` | ✅ T23 |
 | **First autonomous capability — PROPOSE-ONLY self-audit** — `SelfAuditCapability` (vetted deterministic checks → hardened Trust Rule → **proposals only**; no executor dependency = no write path by construction); **6 tests incl. safety property** | `libs/ai-core/src/autonomy/*` | ✅ T23 |
 | **ABAC generalization — ANALYSIS (no code)** — feasibility + target arch + plan + risks/tests for a DB-backed generic policy loader (+ the PIP prerequisite) | `docs/strategy/abac-generalization.md` | ✅ T23 (analysis) |
+| **Agent memory (Wayfinder port)** — v2 brain store (supersede-by-subject, soft-invalidation, embedder tag, minScore, profile/salient; migration `0034`) + memory tools (danger-gated builtins) + `[MEMORY]` tiered context + mem0 post-turn extraction; design doc | `libs/db/src/brain/*`, `libs/ai-core/src/agent-memory/*`, `docs/brain/designs/agent-memory.md` | ✅ T24 |
+| **App-brain ONLINE** — `indexTools`/`indexAuditProposal` (registry + audit findings → recallable memories; live ranking test) | `libs/db/src/brain/indexers.ts` | ✅ T24 |
+| **Chargebee → entitlement loop** — webhook (Basic-auth, timing-safe) → pure mapper (paid-through-grace, at-least-once-safe) → `tenant_modules`; LIVE tool-surface gating behind `AEGIS_ENTITLEMENT_FILTER=on` | `libs/db/src/entitlement/chargebee-webhook.ts`, `apps/user-management/.../chargebee-webhook.controller.ts`, `apps/expense/.../ai-{tools,act}.controller.ts` | ✅ T24 |
+| **ABAC Phase 0 (dormant)** — PolicyRow→PolicyRule mapper (all-or-nothing, `$attr` validation, scope/wildcard-allow bans) + ports registry + PAP write-time hardening + audit script; NO authorize() change | `libs/access-control/src/policy-{row-mapper,ports}.ts`, `apps/user-management` PAP, `scripts/abac/audit-policies.ts` | ✅ T24 |
 
 ---
 

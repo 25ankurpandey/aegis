@@ -11,8 +11,21 @@ import { APP_BRAIN_EMBEDDING_DIM } from './types';
  */
 export interface EmbeddingClient {
   readonly dimensions: number;
+  /**
+   * Vector-SPACE tag (model id + version, e.g. `fnv1a-bow-384/v1`). Stored on every row this
+   * client embeds; recall compares ONLY rows tagged with the querying client's `embedderId` so
+   * vectors from different models/versions are never mixed into one ranking. Bump the version part
+   * whenever the embedding function changes incompatibly.
+   */
+  readonly embedderId: string;
   embed(text: string): Promise<number[]>;
 }
+
+/**
+ * The {@link HashingEmbeddingClient} vector-space id — also the DB column default (migration 0034),
+ * so pre-v2 rows (embedded by the hashing client before the column existed) are tagged correctly.
+ */
+export const HASHING_EMBEDDER_ID = 'fnv1a-bow-384/v1';
 
 /** FNV-1a 32-bit hash. Deterministic, dependency-free; used to bucket tokens into vector slots. */
 function fnv1a32(token: string): number {
@@ -35,6 +48,7 @@ function fnv1a32(token: string): number {
  */
 export class HashingEmbeddingClient implements EmbeddingClient {
   readonly dimensions = APP_BRAIN_EMBEDDING_DIM;
+  readonly embedderId = HASHING_EMBEDDER_ID;
 
   async embed(text: string): Promise<number[]> {
     const vec = new Array<number>(this.dimensions).fill(0);

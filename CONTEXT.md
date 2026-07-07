@@ -281,10 +281,10 @@ build if a capability lacks a description/tier. Full: [stack-sufficiency.md], [a
 ## 12. Current build state (what's REAL vs DESIGNED — be honest)
 
 **REAL, shipping today** (branch `feat/agentic-platform`, pushed to origin = personal GitHub
-`25ankurpandey/aegis`; all green: **ai-core 140/140 (18 suites)** + **db 30/30 (5 suites)** incl.
-**live-Postgres RLS entitlement + live-pgvector app-brain tests**; strict typechecks clean; 147 substrate
-tests unaffected; `expense` app typechecks. Local infra up: aegis **pgvector** Postgres @ 55432 (migrated)
-+ Redis @ 6380):**
+`25ankurpandey/aegis`; all green: **ai-core 154/154 (19 suites)** + **db 69/69 (8 suites, live
+pgvector/RLS/Chargebee)** + **access-control 104/104 (9 suites)**; strict typechecks clean; `expense` +
+`user-management` apps typecheck. Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
+0034) + Redis @ 6380):**
 - The **~46k-LOC access-control substrate** (see §6.2; `SPEC.md`/`IMPLEMENTATION_PLAN.md` authoritative).
 - **Metadata stamping** — `libs/service-core/src/bootstrap/route-metadata.ts`; `authorize()`/`validate()`
   stamp the `Permission` + Joi schema onto the handler (fixes the "trapped in closures" gap).
@@ -340,12 +340,36 @@ tests unaffected; `expense` app typechecks. Local infra up: aegis **pgvector** P
 - **`@aegis/db` entitlement core** (`libs/db/src/entitlement/` + migration `0032_tenant_modules`) — the
   pay-per-module spine's core: `tenant_modules` with FORCE RLS + `EntitlementService`
   (`isModuleEnabled`/`listEnabledModuleIds`) + a tool-filter predicate; proven with a live-Postgres RLS test.
-- **`@aegis/db` pgvector app-brain** (`libs/db/src/brain/` + migration `0033_app_brain_memory`) — the
-  per-tenant self-knowledge / RAG store: `app_brain_memory` (`vector(384)`, HNSW `vector_cosine_ops`
-  index, partial-unique `(tenant,kind,ref)` upsert, FORCE RLS) + a provider-agnostic `EmbeddingClient`
-  seam (offline deterministic `HashingEmbeddingClient` default — a real provider is a drop-in) +
-  `AppBrainRepository` (`<=>` cosine `searchSimilar`, RLS-scoped) + `AppBrainService`; proven with a
-  live-pgvector recall + RLS-isolation test.
+- **`@aegis/db` pgvector app-brain** (`libs/db/src/brain/` + migrations `0033` + `0034`) — the per-tenant
+  self-knowledge / RAG store: `app_brain_memory` (`vector(384)`, HNSW `vector_cosine_ops` index,
+  partial-unique `(tenant,kind,ref)` upsert, FORCE RLS) + a provider-agnostic `EmbeddingClient` seam
+  (offline deterministic `HashingEmbeddingClient` default — a real provider is a drop-in) +
+  `AppBrainRepository`/`AppBrainService`; **v2 (the Wayfinder port):** supersede-by-subject (atomic,
+  RLS-scoped), soft-invalidation (`valid_to`; reads filter live rows; ref-upsert revives), embedder-space
+  tagging, `minScore` recall, deterministic `profile()`/`salient()` tiers. Plus **`indexers.ts`** — the
+  app-brain is ONLINE: `indexTools`/`indexAuditProposal` make the tool registry + audit findings recallable
+  (live test: "create an expense" ranks the expense tool first). All proven live.
+- **`@aegis/ai-core` agent memory** (`src/agent-memory/` — see `docs/brain/designs/agent-memory.md`) —
+  the Wayfinder port above the store: `AgentMemoryStore` structural seam (AppBrainService satisfies it;
+  libs stay decoupled), the 3 memory tools (`memory_remember`/`recall`/`forget`; decisions journal via
+  kind `decision`) as **danger-gated BUILT-IN tools** (same `evaluateActionGate`; risky builtin ⇒
+  `needs_ceremony`), tiered `[MEMORY]` context (Tier-0 profile ≤40 + Tier-1 salient ≤10; Tier-2 = recall
+  tool only), and mem0-style post-turn extraction (ADD/UPDATE/DELETE/NOOP, confidence-gated, fail-soft —
+  memory never crashes a turn). `runAgentTurn` gained `builtinTools` (registry wins collisions);
+  `runConversation` gained `agentMemory`.
+- **Chargebee → entitlement loop CLOSED** (`libs/db/src/entitlement/chargebee-webhook.ts` +
+  user-management `POST /webhooks/chargebee` + expense `entitlementGate`) — webhook (Basic auth,
+  hash-then-timingSafeEqual, fail-closed unconfigured, outside the tool registry) → pure event mapper
+  (strict UUID tenant from `cf_tenant_id`, unmapped skipped never guessed, paid-through-grace on cancel,
+  at-least-once-safe idempotent upserts) → `tenant_modules`; the entitlement predicate gates the LIVE tool
+  surface (list + invoke share one predicate) behind `AEGIS_ENTITLEMENT_FILTER=on` (default OFF/fail-open
+  until billing ingestion populates rows — the PEP stays the real security boundary).
+- **ABAC Phase 0, dormant** (`libs/access-control/src/policy-{row-mapper,ports}.ts` + PAP hardening +
+  `scripts/abac/audit-policies.ts`) — per `docs/strategy/abac-generalization.md` §5: the PolicyRow→PolicyRule
+  mapper (all-or-nothing load semantics, `$attr` syntax validation, scope + wildcard-allow bans),
+  `PolicyReadPort`/`AttributeReadPort` registry, PAP write-time rejection of invalid policies (incl.
+  merged-row PATCH validation), and the one-time audit script. NO `authorize()` behavior change — Phase 1
+  (the DB loader on expense approve) is next.
 - **`apps/expense`** — `GET /expense/v1/_ai/tools` (capability catalog) + `POST /_ai/act` + `/_ai/act/:id/confirm` (the supervised-write flow).
 - **MCP stdio server** — `scripts/mcp/aegis-mcp-stdio.ts` (+ `AEGIS_MCP_README.md`): a Claude-Desktop-driveable
   MCP server over stdio (offline in-process app, or a live service via `AEGIS_SERVICE_BASE_URL`).

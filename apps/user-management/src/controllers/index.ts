@@ -10,3 +10,4 @@ import './session.controller';
 import './tenant-config.controller';
 import './annotation-governance.controller';
 import './internal-recipient.controller';
+import './chargebee-webhook.controller';

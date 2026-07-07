@@ -9,6 +9,7 @@ import {
   InMemoryPendingActionStore,
   type CeremonyEvidence,
 } from '@aegis/ai-core';
+import { entitlementGate } from './ai-tools.controller';
 
 /**
  * The running SUPERVISED ACTION surface for this service: the two-step danger-gated write flow an agent
@@ -32,7 +33,11 @@ export class AiActController {
     const body = req.body as { toolName?: string; args?: Record<string, unknown> };
     const registry = generateToolRegistry(req.app);
     const tool = registry.tools.find((t) => t.name === body.toolName);
-    if (!tool) {
+    // Entitlement gate (flag-guarded, default OFF — see entitlementGate in ai-tools.controller.ts):
+    // the SAME predicate that narrows GET /tools runs here, so a tool whose module the tenant is not
+    // entitled to is indistinguishable from an unknown tool — listing and invocation stay identical.
+    const isModuleEnabled = await entitlementGate(req);
+    if (!tool || (isModuleEnabled && !isModuleEnabled(tool))) {
       res.status(404).json({ error: { message: `unknown tool "${body.toolName ?? ''}"` } });
       return;
     }

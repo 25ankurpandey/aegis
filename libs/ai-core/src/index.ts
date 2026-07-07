@@ -44,3 +44,8 @@ export * from './persistence/redis-stores';
 // The FIRST autonomous capability: the PROPOSE-ONLY self-audit (verifier-gated; no write path).
 export * from './autonomy/types';
 export * from './autonomy/self-audit';
+// Agent memory (the Wayfinder port): tools + tiered context + mem0-style post-turn extraction.
+export * from './agent-memory/types';
+export * from './agent-memory/memory-tools';
+export * from './agent-memory/memory-context';
+export * from './agent-memory/post-turn-extractor';
