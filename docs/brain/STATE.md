@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-09 (session T25). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-09 (session T26). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -118,24 +118,34 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     **missing PIP** makes `own_and_team`, the approval amount-cap, and `manager_of` inert (silent no-op);
     invoice/pay-run/single-expense routes lack row-scope; propose→confirm doesn't bind confirmer↔proposer;
     the `isAgent` self-confirm guard is dead code; built-in memory tools have no per-user authz.
-  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **79/79** (10 suites, live
+  - **[T26] ABAC Phase 2 — the PIP + fence fixes** (security-findings P0) — `UserRepository.loadPipAttributes`
+    resolves `teamIds` (from `team_members`) + `managerOf` (from `approval_hierarchy`) inside the RLS tx;
+    `AuthService.login` mints them into the signed JWT (unforgeable, no per-request DB). **`own_and_team`
+    now enforces** (expense report loader sets `ResourceRef.teamId` → teammate allowed, other team denied);
+    **`checkRowScope` is fail-closed** (missing scope→own-only, unknown→deny); **`manager_of` has a real
+    source**. Closes **SCOPE-04, SCOPE-05, ABAC-02**; unblocks the amount-cap (needs `approvalLimit` source
+    — founder Decision 1). Live PIP test proves resolution + tenant isolation. Also fixed 2 pre-existing
+    T25 PAP-validator test regressions.
+  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **82/82** (11 suites, live) ·
+    `nx test access-control` = **116/116** (10 suites) · `nx test user-management` = **41/41**; strict clean.
+  - **(superseded) T25 totals:** `nx test db` = **79/79** (10 suites, live
     pgvector/RLS/Chargebee/policy-read-port) · `nx test access-control` = **114/114** (10 suites); strict
     `tsc --noEmit` clean; expense + user-management apps typecheck.
 
 ## In progress
 - (nothing executing right now.)
 
-## Next (recommended order) — reprioritized by the T25 security audit
-1. **ABAC Phase 2 — THE PIP** (`docs/strategy/security-findings.md` P0) — populate `principal.attributes`
-   (`teamIds`/`approvalLimit`/`managerOf`) at `authenticate()` via the existing dormant `AttributeReadPort`.
-   ONE change closes 5 findings: the inert amount-cap (ABAC-01/AGENT-04), `own_and_team` collapse (SCOPE-04),
-   `manager_of` (ABAC-02), and the memory-user-scope root. Highest leverage.
-2. **Per-service row-scope wiring** (P0) — add resource loaders + scope-derived list filters to invoice,
-   pay-run, single-expense (`GET /expenses/:id`), and the expense LIST (SCOPE-01/02/03, ROWSCOPE-03).
+## Next (recommended order) — post-T26 (security remediation continuing)
+1. **Per-service row-scope wiring** (security-findings P0) — add resource loaders + scope-derived list
+   filters to **invoice** (SCOPE-01), **pay-run** (SCOPE-02), **single-expense `GET /expenses/:id`** (SCOPE-03),
+   and the **expense LIST** (ROWSCOPE-03). Now unblocked (the `teamId` plumbing + PIP `teamIds` exist).
    Consider a registry/lint check that flags an owned-resource route lacking a scope mechanism.
-3. **Agent-path hardening** (P1) — bind pending actions to `(tenantId,userId)` + confirmer-match + namespace
-   the store key (AGENT-01/06); set `isAgent:true` on every agent gate context (AGENT-02); per-user memory
-   authz + provenance (AGENT-03/MEM-02/03 — decide tenant-shared vs per-user brain).
+2. **Agent-path hardening** (P1) — bind pending actions to `(tenantId,userId)` + confirmer-match + namespace
+   the store key (AGENT-01/06); set `isAgent:true` on every agent gate context (AGENT-02); TOCTOU re-gate at
+   confirm (AGENT-05).
+3. **Founder-gated decisions** (documented in security-findings §Recommendations) — Decision 1: `approvalLimit`
+   source → turns the amount-cap on (ABAC-01/AGENT-04). Decision 2: memory scope model → per-user memory authz
+   + provenance (AGENT-03/MEM-01/02/03). Plus ABAC-04 deny-reason redaction (bundle with the cap).
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
    against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
 5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);

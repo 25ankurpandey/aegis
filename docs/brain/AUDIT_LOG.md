@@ -468,4 +468,41 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T26.*
+## T26 — 2026-07-09 · ABAC Phase 2 (the PIP) + own_and_team enforcement + fail-closed scope
+
+- **Ask:** confirm everything pushed (it was); start the next-phase security fixes; keep readmes updated
+  as we go (limit may exhaust anytime). Founder chose the "PIP + per-service row-scope + fail-closed"
+  slice via AskUserQuestion.
+- **Approach:** work in small committed+pushed sub-slices so an interruption never loses ground. This
+  turn shipped **sub-slice A1 (the PIP + own_and_team + fail-closed scope)**; per-service row-scope
+  (SCOPE-01/02/03) + agent-path hardening are the next sub-slices.
+- **Design decision:** populate the PIP attributes AT LOGIN, minted into the signed JWT — not a
+  per-request DB read in `authenticate()`. Rationale: user-management owns the identity tables; attributes
+  ride in the unforgeable token; no per-request cross-service DB hit / N+1 (the exact concern the audit +
+  abac-generalization doc raised). Freshness = token TTL (team/hierarchy change applies on next login).
+- **Done + verified:**
+  - PIP: `UserRepository.loadPipAttributes` resolves `teamIds` (`SELECT team_id FROM team_members WHERE
+    user_id=$1`) + `managerOf` (`SELECT user_id FROM approval_hierarchy WHERE manager_id=$1`) inside the RLS
+    tx; `getAccess` returns them; `AuthService.login` adds `attributes:{teamIds,managerOf}` to the JWT.
+    `JwtClaims`/`UserAccess` types extended; the PEP already copies `claims.attributes`→`principal.attributes`.
+  - **own_and_team now enforces** (SCOPE-04 ✅): expense `loadReportResource` sets `ResourceRef.teamId`
+    (`report.team_id`) → a teammate is allowed, a different team denied (was silently owner-only).
+  - **`checkRowScope` fail-closed** (SCOPE-05 ✅): missing scope → own-only; unrecognized scope → deny
+    (was allow-all). Updated `scope.spec` (+2 tests: fail-close + unknown-scope-deny).
+  - **`manager_of` source exists** (ABAC-02 ✅): `managerOf` populated from `approval_hierarchy`.
+  - Fixed **2 pre-existing T25 regressions** (user-management PAP-validator tests used stale ad-hoc rule
+    envelopes → updated to the v1 `{conditions}` shape) — surfaced by running the full `nx test
+    user-management`, which the T25 Phase-0 pass had only typechecked, not run.
+  - **Live PIP integration test** (`libs/db/test/pip-attributes.integration.spec.ts`, 3/3): resolves
+    teamIds/managerOf, empty for a user with none, and proves TENANT ISOLATION (tenant B can't see tenant A
+    team memberships — the PIP tables have FORCE RLS, verified live).
+- **Verified:** access-control **116/116** (10 suites) · db **82/82** (11 suites, live) · user-management
+  **41/41** · ai-core 154/154 unchanged · expense + user-management typecheck · strict tsc clean.
+- **Docs:** flipped SCOPE-04/05 + ABAC-02 to ✅ in `security-findings.md` (+ a T26 status banner); STATE +
+  this entry updated; the amount-cap (ABAC-01) explicitly waits on founder Decision 1 (`approvalLimit` source).
+- **Next:** per-service row-scope (SCOPE-01/02/03), agent-path hardening (AGENT-01/02/05/06), then the
+  founder-gated cap + memory-scope decisions.
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T27.*

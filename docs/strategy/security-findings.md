@@ -12,7 +12,20 @@
 > narrower than first stated). One root cause — the **missing PIP** (`principal.attributes` never
 > populated at login) — drives the whole attribute-dependent class.
 >
-> **Status legend.** 🔴 open · 🟡 open (latent/lower-risk) · ✅ fixed. All are 🔴/🟡 as of T25.
+> **Status legend.** 🔴 open · 🟡 open (latent/lower-risk) · ✅ fixed.
+>
+> **Update (T26) — first remediation slice shipped** (commit on `feat/agentic-platform`): the **PIP**
+> now runs at login (`teamIds` from `team_members`, `managerOf` from `approval_hierarchy`, minted into
+> the signed JWT), so:
+> - ✅ **SCOPE-04** — `own_and_team` now actually enforces (expense report loader sets `ResourceRef.teamId`;
+>   a teammate is allowed, a different team denied). Live PIP test proves resolution + tenant isolation.
+> - ✅ **SCOPE-05** — `checkRowScope` is now fail-closed (missing scope → own-only; unknown scope → deny).
+> - ✅ **ABAC-02** — `manager_of` has a real source (`managerOf` populated); still gate `manager_of`
+>   at PAP write-time until a policy needs it.
+> - ⏳ **ABAC-01 / AGENT-04 (cap)** — the PIP seam is ready; the amount cap turns on the moment
+>   `approvalLimit` has a source (**awaiting the founder's Decision 1** below).
+> Remaining open: SCOPE-01/02/03 (per-service row-scope), AGENT-01/02/03/05/06, MEM-*, ABAC-04. See the
+> remediation table at the bottom for current priorities.
 
 ---
 
@@ -156,14 +169,14 @@ No `created_by`/`updated_by` recorded on any memory write — impossible to attr
 updated / forgot a fact, inconsistent with the platform's hash-chained audit elsewhere. *Fix:* record
 `RequestContext.userId()` on every remember/supersede/forget.
 
-#### SCOPE-04 — `own_and_team` collapses to owner-only *(partially-true)*
+#### ✅ SCOPE-04 (FIXED T26) — `own_and_team` collapses to owner-only *(partially-true)*
 Both sides of the team check are dead: login never sets `attributes.teamIds` **and** resource loaders
 never set `ResourceRef.teamId`. Today this is **fail-closed** (a teammate's row is *denied* — no data
 exposure), but the intended team-visibility feature is broken, and it's a latent two-sided mis-auth
 risk if one side is wired without the other. *Fix:* PIP populates `teamIds`; every loader sets
 `teamId`; add a test asserting current owner-only behavior.
 
-#### SCOPE-05 — Missing scope claim fails OPEN *(partially-true)*
+#### ✅ SCOPE-05 (FIXED T26) — Missing scope claim fails OPEN *(partially-true)*
 `checkRowScope` returns `{ok:true}` when `scope == null`. Not exploitable today (the DB column is
 `NOT NULL DEFAULT 'own_only'` with a CHECK, and the single IdP always emits it), but it's a
 fail-*open* fragility with no RLS backstop — the opposite of the surrounding posture. *Fix:* treat
@@ -174,7 +187,7 @@ History is keyed `tenant:session` with no user binding; safe in today's in-proce
 future HTTP surface that trusts a client-supplied `sessionId` would leak another same-tenant user's
 transcript. *Fix:* fold `userId` into the session key, or validate session ownership on every access.
 
-#### ABAC-02 — `manager_of` operator is permanently false
+#### ✅ ABAC-02 (FIXED T26) — `manager_of` operator is permanently false
 Any persisted/future policy using `manager_of` silently never matches (same PIP dependency —
 `managerOf` is never populated; note a source **does** exist: `approval_hierarchy.manager_id`).
 Once `AEGIS_ABAC_DB_POLICIES=on`, a tenant can author a `manager_of` policy that passes the mapper's
