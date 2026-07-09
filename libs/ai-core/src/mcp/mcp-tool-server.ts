@@ -232,7 +232,12 @@ export async function createAegisMcpToolServer(
     // routes it through the human ceremony surface + supervised-write path instead of firing it
     // autonomously. Skipped entirely when no `dangerContext` was supplied (transport-only mode).
     if (opts.dangerContext) {
-      const decision = evaluateActionGate(deriveDangerFacts(tool, args), opts.dangerContext);
+      // MCP tools/call is always an agent-initiated path (AGENT-02): force isAgent so a level-≥2
+      // write escalates to a human second_approver regardless of what the caller passed.
+      const decision = evaluateActionGate(deriveDangerFacts(tool, args), {
+        ...opts.dangerContext,
+        isAgent: true,
+      });
       if (decision.ceremony !== 'allow') {
         return {
           content: [

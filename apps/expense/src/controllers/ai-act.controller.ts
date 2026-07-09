@@ -53,7 +53,9 @@ export class AiActController {
       tool,
       args: body.args ?? {},
       invoke,
-      gateContext: { approverPoolSize: undefined },
+      // Agent-initiated (AGENT-02): isAgent → a level-≥2 write escalates to a human second_approver
+      // that the agent cannot self-satisfy with a confirm/typed-confirm it fabricates.
+      gateContext: { approverPoolSize: undefined, isAgent: true },
     });
     res.status(200).json({ data: result });
   }

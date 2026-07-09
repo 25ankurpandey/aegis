@@ -233,6 +233,9 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AegisTur
     const facts = chosen ? deriveDangerFacts(chosen, args) : deriveBuiltinDangerFacts(builtin!);
     const decision = evaluateActionGate(facts, {
       approverPoolSize: tenant?.approverPoolSize,
+      // This IS an agent-initiated action (AGENT-02): mark it so the danger policy escalates a
+      // level-≥2 write to a human second_approver — the agent's own client must never self-satisfy it.
+      isAgent: true,
     });
 
     if (decision.ceremony !== 'allow') {

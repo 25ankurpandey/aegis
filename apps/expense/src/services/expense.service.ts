@@ -7,6 +7,7 @@ import {
   detachRecordTags,
   withTenantTransaction,
 } from '@aegis/db';
+import { rowScopeListFilter } from '@aegis/access-control';
 import {
   ExpenseReportStatus,
   ExpenseActivityType,
@@ -1004,12 +1005,14 @@ export class ExpenseService {
     ].some((map) => (map[from] ?? []).includes(to));
   }
 
-  /** Row-scope: a plain submitter/contributor only lists their own reports; manager/admin see all. */
+  /**
+   * Row-scope for the report LIST, derived from the SIGNED scope claim — not role names (ROWSCOPE-03:
+   * an own-scoped Manager/Approver must NOT see every report). `all` → no submitter restriction;
+   * `own`/`own_and_team` → restrict to the caller. (own_and_team teammates in the list is a documented
+   * follow-up — safe/fail-closed; the single-report route already enforces team via checkRowScope.)
+   */
   private rowScopeSubmitterFilter(): string | undefined {
-    if (this.isAdmin()) return undefined;
-    const roles = RequestContext.roles();
-    if (roles.includes(SystemRole.Manager) || roles.includes(SystemRole.Approver)) return undefined;
-    return this.requireUser();
+    return rowScopeListFilter().scope === 'all' ? undefined : this.requireUser();
   }
 
   private isAdmin(): boolean {
