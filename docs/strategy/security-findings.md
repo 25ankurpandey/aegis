@@ -32,8 +32,14 @@
 >   not role names (an own-scoped Manager/Approver no longer sees every report).
 > - ✅ **AGENT-02 (FIXED T26)** — `isAgent:true` is now set on every agent gate context (orchestrator,
 >   `/_ai/act` broker, MCP tools/call), so a level-≥2 agent write escalates to a human second_approver.
-> Remaining open: AGENT-01/03/05/06, MEM-*, ABAC-04, and the founder-gated cap (Decision 1) + memory
-> scope (Decision 2). One documented follow-up: own_and_team teammates in the *expense* list (fail-closed
+> - ✅ **AGENT-01/05/06 (FIXED T26)** — the supervised propose→confirm flow is hardened: pending actions
+>   are stored under a **tenant-namespaced key** (a cross-tenant confirm can't find them, AGENT-06); the
+>   **proposer is bound** and the confirmer is checked (same tenant always; same user for self-satisfiable
+>   ceremonies; a different same-tenant user for `second_approver` SoD — AGENT-01); and confirm
+>   **re-evaluates the gate** and voids the action if it tightened, with an optional `liveFacts` hook for
+>   the app to inject an authoritative live COUNT (AGENT-05).
+> Remaining open: AGENT-03, MEM-*, ABAC-04, and the founder-gated cap (Decision 1) + memory scope
+> (Decision 2). One documented follow-up: own_and_team teammates in the *expense* list (fail-closed
 > today; the single-report route already enforces team). See the remediation table for priorities.
 
 ---
@@ -128,7 +134,7 @@ can approve any amount.** Verified against `auth.service.ts:54-61`, `pep.ts:54-6
 *Fix:* ship the PIP so `authenticate()` populates `approvalLimit` via `getAttributeReadPort()` — or
 move the cap to a server-side per-tenant config the PDP reads. (This is ABAC Phase 2.)
 
-#### AGENT-01 — Propose→confirm does not bind the confirmer to the proposer *(partially-true)*
+#### ✅ AGENT-01 (FIXED T26) — Propose→confirm does not bind the confirmer to the proposer *(partially-true)*
 The `/_ai/act/:id/confirm` handler reads only the pending id + `evidence` and never checks
 `req.principal` against the proposer; `PendingAction` has no proposer field. So **any authenticated
 caller who obtains a pending id can trigger someone else's staged write** — it executes with the
@@ -152,7 +158,7 @@ its `riskTier` (which the registry validator flags).
 
 ### 🟡 MEDIUM
 
-#### AGENT-05 — Confirm/execute trusts the stored danger decision (TOCTOU)
+#### ✅ AGENT-05 (FIXED T26) — Confirm/execute trusts the stored danger decision (TOCTOU)
 `confirm` hands the **stored** decision to `executeSupervisedWrite`, which re-derives facts only to
 pick the verification blast — it never re-runs `evaluateActionGate` against a fresh pre-flight
 `COUNT(*)`. The code's own doc-comments (`danger-gate.ts:22-27`, `derive-danger-facts.ts:14-18`) say
@@ -161,7 +167,7 @@ proposed as 1-row (light ceremony) can execute after the underlying set grows to
 *Fix:* re-derive against the live tenant transaction + re-run the gate at confirm; void the challenge
 if the recomputed decision is stricter.
 
-#### AGENT-06 — Pending-action store key is global (no tenant/user namespace)
+#### ✅ AGENT-06 (FIXED T26) — Pending-action store key is global (no tenant/user namespace)
 Redis key is `${prefix}:pending:${id}` with no tenant/user segment, and the default expense wiring
 shares **one** in-memory `Map` across all tenants; `get()` can't scope to the caller's tenant even if
 confirm wanted to. Combined with AGENT-01, a leaked/guessed id is a cross-tenant *trigger* handle

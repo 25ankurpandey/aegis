@@ -126,9 +126,10 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     source**. Closes **SCOPE-04, SCOPE-05, ABAC-02**; unblocks the amount-cap (needs `approvalLimit` source
     — founder Decision 1). Live PIP test proves resolution + tenant isolation. Also fixed 2 pre-existing
     T25 PAP-validator test regressions.
-  - **Totals:** `nx test ai-core` = **154/154** · `nx test db` = **82/82** (11 suites, live) ·
-    `nx test access-control` = **116/116** · `nx test user-management` = **41/41** · `nx test invoice` =
-    **50/50** · `nx test payroll` = **84/84** · `nx test expense` = **79/79**; all apps typecheck; strict clean.
+  - **Totals:** `nx test ai-core` = **157/157** · `nx test db` = **82/82** (11 suites, live) ·
+    `nx test access-control` = **121/121** · `nx test service-core` = **93/93** · `nx test user-management` =
+    **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` = **79/79**;
+    all apps typecheck; strict clean.
   - **(superseded) T25 totals:** `nx test db` = **79/79** (10 suites, live
     pgvector/RLS/Chargebee/policy-read-port) · `nx test access-control` = **114/114** (10 suites); strict
     `tsc --noEmit` clean; expense + user-management apps typecheck.
@@ -137,16 +138,16 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 - (nothing executing right now.)
 
 ## Next (recommended order) — post-T26 (security remediation continuing)
-> **DONE (T26):** the whole row-scope slice — PIP (SCOPE-04, ABAC-02), fail-closed scope (SCOPE-05),
-> single-resource fences (SCOPE-01/02/03 IDOR), list filters (SCOPE-01/02 list + ROWSCOPE-03), and
-> AGENT-02 (isAgent on all agent gate contexts). See `security-findings.md` (10 of 16 findings closed).
-1. **Agent-path hardening** (P1, remaining) — bind pending actions to `(tenantId,userId)` + confirmer-match
-   + namespace the store key (AGENT-01/06); TOCTOU re-gate at confirm against a live count (AGENT-05).
-2. **Founder-gated decisions** (documented in security-findings §Recommendations) — Decision 1: `approvalLimit`
+> **DONE (T26):** the row-scope slice (PIP SCOPE-04/ABAC-02, fail-closed SCOPE-05, single-resource
+> SCOPE-01/02/03, list filters + ROWSCOPE-03, AGENT-02) **AND agent-path hardening (AGENT-01/05/06** —
+> tenant-namespaced pending-action keys, proposer↔confirmer binding + SoD, confirm-time gate re-eval).
+> **13 of 16 findings closed.** See `security-findings.md`.
+1. **Founder-gated decisions** (documented in security-findings §Recommendations) — Decision 1: `approvalLimit`
    source → turns the amount-cap on (ABAC-01/AGENT-04; the PIP seam is ready). Decision 2: memory scope model
    → per-user memory authz + provenance (AGENT-03/MEM-01/02/03). Plus ABAC-04 deny-reason redaction.
-3. **Follow-up:** own_and_team teammates in the *expense* list (fail-closed today); a registry/lint check
+2. **Follow-ups:** own_and_team teammates in the *expense* list (fail-closed today); a registry/lint check
    flagging any owned-resource route lacking a scope mechanism.
+3. **Then:** the live end-to-end demo (founder LLM key) + a real embedding provider (semantic app-brain recall).
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
    against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
 5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);

@@ -522,9 +522,18 @@
     second_approver the agent can't self-satisfy. Committed `4be69c0`.
   - Verified: access-control **121/121**, service-core 93/93, ai-core 154/154, invoice 50/50, payroll 84/84,
     expense 79/79; all apps typecheck; strict clean.
-  - **Net after T26: 10 of the 16 audit findings closed** (SCOPE-01/02/03/04/05, ROWSCOPE-03, ABAC-02,
-    AGENT-02, + the two fail-closed). Remaining: AGENT-01/03/05/06, MEM-*, ABAC-04, and the two founder
-    decisions (amount-cap source, memory scope). One documented follow-up (own_and_team expense list).
+  - **Net after T26 (row-scope): 10 of 16 findings closed.**
+- **T26 cont.³ — agent-path hardening (AGENT-01/05/06):** hardened the supervised propose→confirm flow.
+  Pending actions now stored under a **tenant-namespaced key** `${tenantId}::${uuid}` (client sees only
+  the uuid) so a cross-tenant confirm can't find them (AGENT-06); `PendingAction` records its `proposer`
+  and confirm checks the confirmer — same tenant always, same user for self-satisfiable ceremonies, a
+  DIFFERENT same-tenant user for `second_approver` SoD (AGENT-01); confirm RE-EVALUATES the gate (stored
+  `gateContext`) and voids the action if the ceremony tightened, with an optional `liveFacts` hook to
+  inject an authoritative live COUNT (AGENT-05). Exported `strictnessOf`/`isCeremonyStricter`. The
+  `/_ai/act` controller passes proposer/confirmer from `req.principal`. broker spec +3 (cross-tenant,
+  different-user, gate-tightened); redis spec updated. Verified: ai-core **157/157**, expense 79/79,
+  typecheck clean. Committed `0f0e9e4`. **Net: 13 of 16 findings closed.** Remaining: AGENT-03 + MEM-*
+  + ABAC-04 (all fold into founder Decision 2 / the cap), and the two founder decisions themselves.
 
 ---
 
