@@ -509,6 +509,22 @@
   loaders read `req.principal`). Verified: invoice 50/50, payroll 84/84, expense 79/79, all typecheck.
   Committed `cc385d2`. **Still to do:** the LIST-route scope filters (invoice/pay-run) + the expense-list
   role→scope fix (ROWSCOPE-03), which DO need `scope`/`teamIds` surfaced into `RequestContext` (PEP sets them).
+- **T26 cont.² — list filters + AGENT-02 (row-scope slice COMPLETE):**
+  - Foundation: `RequestContext` now carries `scope`+`teamIds` (PEP sets them post-auth) + accessors; new
+    `@aegis/access-control` `rowScopeListFilter()` (fail-closed: missing/unknown → own). 5 unit tests.
+  - **SCOPE-01/02 list half:** invoice + pay-run list queries AND in a scope predicate (own → creator/
+    submitter; own_and_team → +`team_id ∈ teamIds`; all → unrestricted; fail-closed no-userId → matches
+    nothing), applied via `Op.and` so other filters are preserved. Committed `b46295a`.
+  - **ROWSCOPE-03:** expense report list now derives its submitter filter from the signed scope claim
+    (not role names) — an own-scoped Manager/Approver is correctly restricted.
+  - **AGENT-02:** `isAgent:true` set on all three agent gate contexts (orchestrator `runAgentTurn`,
+    `/_ai/act` broker propose, MCP `tools/call` — forced) → a level-≥2 agent write escalates to a human
+    second_approver the agent can't self-satisfy. Committed `4be69c0`.
+  - Verified: access-control **121/121**, service-core 93/93, ai-core 154/154, invoice 50/50, payroll 84/84,
+    expense 79/79; all apps typecheck; strict clean.
+  - **Net after T26: 10 of the 16 audit findings closed** (SCOPE-01/02/03/04/05, ROWSCOPE-03, ABAC-02,
+    AGENT-02, + the two fail-closed). Remaining: AGENT-01/03/05/06, MEM-*, ABAC-04, and the two founder
+    decisions (amount-cap source, memory scope). One documented follow-up (own_and_team expense list).
 
 ---
 

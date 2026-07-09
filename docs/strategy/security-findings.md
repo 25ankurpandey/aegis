@@ -24,13 +24,17 @@
 >   at PAP write-time until a policy needs it.
 > - ⏳ **ABAC-01 / AGENT-04 (cap)** — the PIP seam is ready; the amount cap turns on the moment
 >   `approvalLimit` has a source (**awaiting the founder's Decision 1** below).
-> - 🟡 **SCOPE-01/02/03 (single-resource half FIXED T26)** — invoice `GET /invoices/:id`, pay-run
->   `GET /pay-runs/:id`, and `GET /expenses/:id` now run a PEP resource loader → `checkRowScope`
->   (own_only denies a non-owner; own_and_team allows same-team). The **LIST-route scope filters** for
->   invoice/pay-run + the expense-list role→scope fix (ROWSCOPE-03) remain — they need `scope`/`teamIds`
->   surfaced into `RequestContext` (next increment).
-> Remaining open: SCOPE-01/02 (list half), ROWSCOPE-03, AGENT-01/02/03/05/06, MEM-*, ABAC-04. See the
-> remediation table at the bottom for current priorities.
+> - ✅ **SCOPE-01/02/03 (FIXED T26)** — single-resource reads (`GET /invoices/:id`, `/pay-runs/:id`,
+>   `/expenses/:id`) run a PEP resource loader → `checkRowScope`; **and the invoice + pay-run LIST
+>   queries now filter by the signed scope claim** (`own`→creator/submitter, `own_and_team`→+team,
+>   `all`→unrestricted; fail-closed) via the new `rowScopeListFilter` + `RequestContext.scope()/teamIds()`.
+> - ✅ **ROWSCOPE-03 (FIXED T26)** — the expense report LIST derives its filter from the scope claim,
+>   not role names (an own-scoped Manager/Approver no longer sees every report).
+> - ✅ **AGENT-02 (FIXED T26)** — `isAgent:true` is now set on every agent gate context (orchestrator,
+>   `/_ai/act` broker, MCP tools/call), so a level-≥2 agent write escalates to a human second_approver.
+> Remaining open: AGENT-01/03/05/06, MEM-*, ABAC-04, and the founder-gated cap (Decision 1) + memory
+> scope (Decision 2). One documented follow-up: own_and_team teammates in the *expense* list (fail-closed
+> today; the single-report route already enforces team). See the remediation table for priorities.
 
 ---
 
@@ -55,7 +59,7 @@ actually work yet."** The fix is the PIP (ABAC Phase 2) + per-service scope wiri
 
 ### 🔴 HIGH
 
-#### SCOPE-01 — Invoice routes have no row-scope fence
+#### ✅ SCOPE-01 (FIXED T26) — Invoice routes have no row-scope fence
 Any user with `invoice.view` reads **every** invoice in the tenant (single `GET /invoices/:id` and
 the list). `authorize(InvoiceView)` is called with no resource loader, so `pep.ts:275`
 (`if (resource || policies.length)`) is false and the entire `checkRowScope`/PDP layer is skipped;
@@ -66,7 +70,7 @@ the service does a tenant-only (RLS) read with no owner predicate.
 scope-derived submitter filter to `list` (mirror expense's `rowScopeSubmitterFilter`) — or make
 invoices explicitly tenant-visible behind a distinct all-records permission.
 
-#### SCOPE-02 — Pay-run routes have no row-scope fence
+#### ✅ SCOPE-02 (FIXED T26) — Pay-run routes have no row-scope fence
 Any user with `payroll.run.approve` reads every pay run in the tenant (single GET + list). Same
 mechanism as SCOPE-01 (no resource loader → PDP/scope skipped; list applies only client-chosen
 filters). *Evidence:* `apps/payroll/src/controllers/pay-run.controller.ts:32-47,145-153`;
@@ -75,7 +79,7 @@ filters). *Evidence:* `apps/payroll/src/controllers/pay-run.controller.ts:32-47,
 scope/role. (Note: pay-runs are somewhat tenant-level objects; confirm the product intent — but
 today the scope claim is simply never consulted.)
 
-#### SCOPE-03 — `GET /expenses/:id` (single item) skips the scope check
+#### ✅ SCOPE-03 (FIXED T26) — `GET /expenses/:id` (single item) skips the scope check
 Inconsistent with the sibling report routes: a contributor (`own_only`) can read another user's
 expense line (amount, merchant, receipt) by id, because this route has no resource loader while the
 report routes do. *Evidence:* `apps/expense/src/controllers/expense.controller.ts:27-35`;
@@ -83,13 +87,13 @@ report routes do. *Evidence:* `apps/expense/src/controllers/expense.controller.t
 *Fix:* add a resource loader that surfaces the item's `created_by` (+ its report's submitter/team)
 so `checkRowScope` runs.
 
-#### ROWSCOPE-03 / (expense list) — list scope derived from ROLE NAMES, not `principal.scope`
+#### ✅ ROWSCOPE-03 (FIXED T26) / (expense list) — list scope derived from ROLE NAMES, not `principal.scope`
 An own-scoped Manager/Approver sees **all** reports because the expense list branches on role names
 rather than the signed scope claim. (Confirmed in the earlier verify batch; same root as SCOPE-04's
 list over-exposure.) *Fix:* drive the list filter from `principal.scope` + team membership, not role
 name.
 
-#### AGENT-02 — The "agent cannot self-confirm at level ≥ 2" guarantee is dead code
+#### ✅ AGENT-02 (FIXED T26) — The "agent cannot self-confirm at level ≥ 2" guarantee is dead code
 The §3.4 escalation to a human `second_approver` fires only when `ctx.isAgent` is true — but **no
 production path ever sets `isAgent`** (`agent-orchestrator.ts:234-236`, `ai-act.controller.ts:56`,
 `mcp-tool-server.ts:235` all omit it; only a unit test sets it). So a level-2 (`typed_confirm`) or

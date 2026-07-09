@@ -137,18 +137,16 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 - (nothing executing right now.)
 
 ## Next (recommended order) — post-T26 (security remediation continuing)
-1. **Per-service row-scope wiring** (security-findings P0) — **single-resource reads DONE (T26):** invoice
-   `GET /invoices/:id`, pay-run `GET /pay-runs/:id`, `GET /expenses/:id` now run a resource loader →
-   checkRowScope. **Remaining: LIST-route scope filters** for invoice (SCOPE-01) + pay-run (SCOPE-02) and
-   the **expense-list role→scope fix** (ROWSCOPE-03) — these need `scope`/`teamIds` surfaced into
-   `RequestContext` (PEP sets them). Then a registry/lint check flagging an owned-resource route with no
-   scope mechanism.
-2. **Agent-path hardening** (P1) — bind pending actions to `(tenantId,userId)` + confirmer-match + namespace
-   the store key (AGENT-01/06); set `isAgent:true` on every agent gate context (AGENT-02); TOCTOU re-gate at
-   confirm (AGENT-05).
-3. **Founder-gated decisions** (documented in security-findings §Recommendations) — Decision 1: `approvalLimit`
-   source → turns the amount-cap on (ABAC-01/AGENT-04). Decision 2: memory scope model → per-user memory authz
-   + provenance (AGENT-03/MEM-01/02/03). Plus ABAC-04 deny-reason redaction (bundle with the cap).
+> **DONE (T26):** the whole row-scope slice — PIP (SCOPE-04, ABAC-02), fail-closed scope (SCOPE-05),
+> single-resource fences (SCOPE-01/02/03 IDOR), list filters (SCOPE-01/02 list + ROWSCOPE-03), and
+> AGENT-02 (isAgent on all agent gate contexts). See `security-findings.md` (10 of 16 findings closed).
+1. **Agent-path hardening** (P1, remaining) — bind pending actions to `(tenantId,userId)` + confirmer-match
+   + namespace the store key (AGENT-01/06); TOCTOU re-gate at confirm against a live count (AGENT-05).
+2. **Founder-gated decisions** (documented in security-findings §Recommendations) — Decision 1: `approvalLimit`
+   source → turns the amount-cap on (ABAC-01/AGENT-04; the PIP seam is ready). Decision 2: memory scope model
+   → per-user memory authz + provenance (AGENT-03/MEM-01/02/03). Plus ABAC-04 deny-reason redaction.
+3. **Follow-up:** own_and_team teammates in the *expense* list (fail-closed today); a registry/lint check
+   flagging any owned-resource route lacking a scope mechanism.
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
    against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
 5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);
