@@ -12,10 +12,11 @@ import {
 } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants, PaginationConstants } from '@aegis/shared-constants';
-import { PayrollShape } from '@aegis/shared-types';
+import { PayrollShape, type AccessShape } from '@aegis/shared-types';
 import { authenticate, authorize, authorizeAny } from '@aegis/access-control';
-import { RecordAnnotationFeatureFlag } from '@aegis/db';
+import { RecordAnnotationFeatureFlag, withTenantTransaction } from '@aegis/db';
 import { PayRunService } from '../services/pay-run.service';
+import { PayRunRepository } from '../repositories/pay-run.repository';
 import {
   approveSchema,
   createPayRunSchema,
@@ -145,7 +146,7 @@ export class PayRunController {
   @httpGet(
     '/pay-runs/:id',
     authenticate(),
-    authorize(Permission.PayRunApprove),
+    authorize(Permission.PayRunApprove, { resource: (req) => loadPayRunResource(req) }),
     validate(payRunIdParamSchema, 'params'),
   )
   async get(req: Request, res: Response): Promise<void> {
@@ -184,4 +185,21 @@ export class PayRunController {
   private payslipAccess(res: Response): { canViewAll: boolean } {
     return { canViewAll: res.locals.authorizedPermission === Permission.PayslipViewAll };
   }
+}
+
+/**
+ * Resource loader for the single pay-run read (SCOPE-02): surfaces the pay-run's owner (`created_by`)
+ * and `team_id` so the PEP row-scope check runs — an own_only/own_and_team approver is denied a pay
+ * run they neither created nor share a team with (was previously readable by any approver).
+ */
+async function loadPayRunResource(req: Request): Promise<AccessShape.ResourceRef> {
+  const id = routeParam(req, 'id');
+  const repo = new PayRunRepository();
+  const payRun = await withTenantTransaction((t) => repo.findPayRunById(id, t));
+  return {
+    type: 'pay_run',
+    id,
+    ownerId: payRun?.created_by ?? undefined,
+    teamId: payRun?.team_id ?? undefined,
+  };
 }

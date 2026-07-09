@@ -13,8 +13,10 @@ import {
 import { Permission, InvoiceStatus } from '@aegis/shared-enums';
 import { ApiConstants, PaginationConstants } from '@aegis/shared-constants';
 import { authenticate, authorize } from '@aegis/access-control';
-import { RecordAnnotationFeatureFlag } from '@aegis/db';
+import { RecordAnnotationFeatureFlag, withTenantTransaction } from '@aegis/db';
+import type { AccessShape } from '@aegis/shared-types';
 import { InvoiceService } from '../services/invoice.service';
+import { InvoiceRepository } from '../repositories/invoice.repository';
 import {
   createInvoiceSchema,
   approveInvoiceSchema,
@@ -70,7 +72,11 @@ export class InvoiceController {
     res.status(200).json({ data: await this.invoices.listPendingApprovals() });
   }
 
-  @httpGet('/invoices/:id', authenticate(), authorize(Permission.InvoiceView))
+  @httpGet(
+    '/invoices/:id',
+    authenticate(),
+    authorize(Permission.InvoiceView, { resource: (req) => loadInvoiceResource(req) }),
+  )
   async getOne(req: Request, res: Response): Promise<void> {
     res.status(200).json({ data: await this.invoices.getById(routeParam(req, 'id')) });
   }
@@ -110,4 +116,22 @@ export class InvoiceController {
   async approve(req: Request, res: Response): Promise<void> {
     res.status(200).json({ data: await this.invoices.approve(routeParam(req, 'id'), req.body) });
   }
+}
+
+/**
+ * Resource loader for the single-invoice read (SCOPE-01): loads the invoice's owner (`created_by`,
+ * falling back to `submitted_by`) and `team_id` into a ResourceRef so the PEP's row-scope check runs
+ * — an own_only principal is denied a non-owned invoice, own_and_team allows a same-team invoice, and
+ * `all` is unrestricted. An RLS-invisible / missing id yields undefined owner → the standard 404 path.
+ */
+async function loadInvoiceResource(req: Request): Promise<AccessShape.ResourceRef> {
+  const id = routeParam(req, 'id');
+  const repo = new InvoiceRepository();
+  const invoice = await withTenantTransaction((t) => repo.findById(id, t));
+  return {
+    type: 'invoice',
+    id,
+    ownerId: invoice?.created_by ?? invoice?.submitted_by ?? undefined,
+    teamId: invoice?.team_id ?? undefined,
+  };
 }
