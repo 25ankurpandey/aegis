@@ -176,16 +176,32 @@ transcript. *Fix:* fold `userId` into the session key, or validate session owner
 
 #### ABAC-02 — `manager_of` operator is permanently false
 Any persisted/future policy using `manager_of` silently never matches (same PIP dependency —
-`managerOf` is never populated). *Fix:* PIP populates `managerOf` from the reporting hierarchy;
-until then, reject policies referencing it at PAP write time.
+`managerOf` is never populated; note a source **does** exist: `approval_hierarchy.manager_id`).
+Once `AEGIS_ABAC_DB_POLICIES=on`, a tenant can author a `manager_of` policy that passes the mapper's
+operator whitelist and loads, but always evaluates false — a **deny** never fires (fails open on the
+money path). *Fix:* PIP populates `managerOf` from `approval_hierarchy`; **until then, reject
+`manager_of` (and any principal-attribute condition) at PAP write time** so tenants can't author a
+silently-inert money-path rule.
 
-### Pending final verdict (background verify in flight)
-- **MEM-01** — app-brain has no user-level scoping (cross-user recall within a tenant). *Substance
-  already corroborated by AGENT-03 + MEM-02/03 (all confirmed).* 
-- **ABAC-03, ABAC-04** — further attribute-dependent ABAC inertness. *Same PIP root cause.*
+### 🟡 LOW
 
-*(This section will be finalized when the last three verifier verdicts land; none is expected to
-change the remediation plan, which already covers the class.)*
+#### ABAC-04 — PDP deny reason leaked to the client verbatim
+The PDP deny reason flows through `ErrUtils.forbidden(decision.reason)` and the error middleware
+returns it unredacted for 4xx. The amount-cap policy id embeds the limit
+(`amount-cap:expense.report.approve:5000`), so once the PIP populates `approvalLimit`, an over-cap
+approval returns `403 "denied by policy amount-cap:…:5000"` — disclosing the approver's personal cap;
+DB-backed denials similarly leak the policy UUID. *Fix:* return a generic `"denied by policy"` to the
+client and log the detailed reason/policy id server-side, keyed by `correlationId` (mirror the 5xx
+redaction the middleware already does). **Address this alongside shipping the PIP** — the leak only
+becomes reachable once the cap actually fires.
+
+### Audit completeness
+All auditor + verifier agents across the T25 run completed. The finding set was **reproduced
+consistently across independent re-runs** (labels vary between runs — `SCOPE-*`/`ROWSCOPE-*`, etc. —
+but the substance is identical), which is a robustness signal: these are stable, real defects, not
+run-to-run noise. MEM-01 (cross-user recall) is corroborated by AGENT-03 + MEM-02/03; one provenance
+sub-claim was `refuted` in one run and `confirmed` in another (a labeling artifact) — treat provenance
+(MEM-03) as a real low-stakes audit gap regardless.
 
 ---
 
@@ -212,4 +228,53 @@ change the remediation plan, which already covers the class.)*
 
 **Net:** the two P0 rows (the PIP + the per-service scope wiring) close **9 of the 16** findings and
 answer the founding question directly. The ABAC Phase 0/1 foundation (mapper + ports + DB loader)
-landed in T24; the PIP is Phase 2 and is the highest-leverage next slice.
+landed in T24/T25; the PIP is Phase 2 and is the highest-leverage next slice.
+
+---
+
+## Recommendations for the two open decisions (documented, not yet implemented)
+
+Two fixes hinge on a product/architecture choice with no obvious default. Per the founder's
+direction these are **documented with a recommendation, pending sign-off before any code**. Data
+sources were checked against the live DB (T25).
+
+### Decision 1 — where the approval amount-cap lives (unblocks ABAC-01 / AGENT-04)
+There is **no** `approval_limit` column anywhere today (confirmed live), so the cap has no source.
+Options and the trade-offs:
+
+| Option | Granularity | New schema | Admin surface | Notes |
+|---|---|---|---|---|
+| **A. Column on `user_roles`** (`approval_limit_minor`) | Per role-assignment, per tenant, per user | 1 nullable column | Reuses the existing role-assignment surface (where `scope` already lives) | Most granular; the PIP reads it straight into `principal.attributes.approvalLimit` |
+| B. Per-tenant config (role→limit map) | Per role (all holders share) | 1 small config/table | Needs a small config surface | Centralized, fewer rows; can't give two managers different caps |
+| C. Persisted ABAC policy only | Per-tenant threshold on `resource.amount` | none (uses Phase-1 loader) | The PAP policy API | No *per-person* cap; a $5k and a $50k approver can't be distinguished |
+
+**Recommendation: A (`approval_limit_minor` on `user_roles`)** — it's where `scope` already lives, it
+is the most faithful to "this *person* in this *role* may approve up to X," and it drops straight into
+the PIP with no new evaluation path. Pair it with C for tenant-wide ceiling policies (they compose:
+deny-overrides means the stricter of the two wins). Avoid B unless the founder specifically wants a
+single cap per role. **Also gate the info-leak (ABAC-04) in the same change** so the cap value isn't
+echoed to clients.
+
+### Decision 2 — the memory scoping model (unblocks AGENT-03 / MEM-02 / MEM-03 / MEM-01)
+Today `app_brain_memory` is one shared **tenant** brain: any user in a tenant can recall, supersede,
+or `forgetBySubject` another user's memories, with no owner column and no provenance.
+
+| Option | Isolation | Work | Fits |
+|---|---|---|---|
+| **A. Both, via a scope flag** (`owner_user_id` + `scope ∈ {private, team}`, default `private`) | Per-user by default; opt-in tenant-shared | Medium (column + RLS/predicate + tool arg + `kind`/scope plumbing) | A personal assistant *and* shared org knowledge |
+| B. Per-user private only | Strict per-user within tenant | Small–medium | Pure personal assistant; no team brain |
+| C. Tenant-shared (keep) + provenance + owner-gated destructive ops | Org-wide readable by design | Small | "Team brain" where cross-user read is intended |
+
+**Recommendation: A (both, scope-flagged, default private)** — it's the only option that doesn't
+foreclose a direction: memories are private unless explicitly written as `team`, which matches how the
+agent-memory tools are meant to be used (a user's own working memory vs. deliberately shared team
+facts). It cleanly closes MEM-01/02/03 and AGENT-03 (per-user RLS predicate + owner-gated
+`forgetBySubject` + `created_by`/`updated_by` provenance). B is a safe fallback if a team brain isn't
+wanted yet; C is the minimum if cross-user reads are explicitly desired. Whichever is chosen, **give
+the built-in memory write tools an explicit capability check** (AGENT-03) — "no guarded route" must
+not mean "no authorization."
+
+> **Nothing above is built yet.** These are recommendations for founder sign-off; the row-scope
+> wiring (P0) and the PIP's `teamIds`/`managerOf` halves (which *do* have live data sources —
+> `team_members`, `approval_hierarchy`) can proceed independently of these two decisions when the
+> founder gives the go-ahead to implement.

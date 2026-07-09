@@ -281,9 +281,9 @@ build if a capability lacks a description/tier. Full: [stack-sufficiency.md], [a
 ## 12. Current build state (what's REAL vs DESIGNED — be honest)
 
 **REAL, shipping today** (branch `feat/agentic-platform`, pushed to origin = personal GitHub
-`25ankurpandey/aegis`; all green: **ai-core 154/154 (19 suites)** + **db 69/69 (8 suites, live
-pgvector/RLS/Chargebee)** + **access-control 104/104 (9 suites)**; strict typechecks clean; `expense` +
-`user-management` apps typecheck. Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
+`25ankurpandey/aegis`; all green: **ai-core 154/154 (19 suites)** + **db 79/79 (10 suites, live
+pgvector/RLS/Chargebee/policy-read-port)** + **access-control 114/114 (10 suites)**; strict typechecks
+clean; `expense` + `user-management` apps typecheck. Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
 0034) + Redis @ 6380):**
 - The **~46k-LOC access-control substrate** (see §6.2; `SPEC.md`/`IMPLEMENTATION_PLAN.md` authoritative).
 - **Metadata stamping** — `libs/service-core/src/bootstrap/route-metadata.ts`; `authorize()`/`validate()`
@@ -364,12 +364,22 @@ pgvector/RLS/Chargebee)** + **access-control 104/104 (9 suites)**; strict typech
   at-least-once-safe idempotent upserts) → `tenant_modules`; the entitlement predicate gates the LIVE tool
   surface (list + invoke share one predicate) behind `AEGIS_ENTITLEMENT_FILTER=on` (default OFF/fail-open
   until billing ingestion populates rows — the PEP stays the real security boundary).
-- **ABAC Phase 0, dormant** (`libs/access-control/src/policy-{row-mapper,ports}.ts` + PAP hardening +
-  `scripts/abac/audit-policies.ts`) — per `docs/strategy/abac-generalization.md` §5: the PolicyRow→PolicyRule
-  mapper (all-or-nothing load semantics, `$attr` syntax validation, scope + wildcard-allow bans),
-  `PolicyReadPort`/`AttributeReadPort` registry, PAP write-time rejection of invalid policies (incl.
-  merged-row PATCH validation), and the one-time audit script. NO `authorize()` behavior change — Phase 1
-  (the DB loader on expense approve) is next.
+- **ABAC Phase 0 + 1** (`libs/access-control/src/policy-{row-mapper,ports}.ts`, `libs/db/src/policy-read-port.ts`,
+  `policy-loader.ts` `dbPolicies`/`combinePolicies` + PAP hardening + `scripts/abac/audit-policies.ts`) —
+  per `docs/strategy/abac-generalization.md` §5. **Phase 0:** the PolicyRow→PolicyRule mapper
+  (all-or-nothing load, `$attr` validation, scope + wildcard-allow bans), `PolicyReadPort`/`AttributeReadPort`
+  registry, PAP write-time rejection of invalid policies. **Phase 1 (T25):** the shared-DB `PolicyReadPort`
+  (RLS-scoped raw SELECT, FAIL-CLOSED) + `dbPolicies` wired on the expense approve routes behind
+  `AEGIS_ABAC_DB_POLICIES=on` (default OFF); live 6/6 test. NO `authorize()` behavior change while off.
+  **Next: Phase 2 = the PIP** (populate `principal.attributes` — the audit's P0; see below).
+- **Security model + audit (T25)** — `docs/strategy/security-model.md` (the four fences —
+  tenant-RLS/RBAC/ABAC/row-scope — the request lifecycle, and how the agent layer inherits every fence)
+  and `docs/strategy/security-findings.md` (16 adversarially-verified within-tenant findings + a
+  prioritized remediation plan). **Tenant isolation is a hard, live-verified guarantee.** The dominant
+  gap is the **un-populated PIP** (`principal.attributes` never set at login) → `own_and_team`, the
+  approval amount-cap, and `manager_of` are all silently inert; plus per-service row-scope coverage gaps
+  (invoice/pay-run/single-expense) and agent-path/memory-scope hardening. Two fixes await founder
+  sign-off (amount-cap source, memory scope) — recommendations documented in the findings doc.
 - **`apps/expense`** — `GET /expense/v1/_ai/tools` (capability catalog) + `POST /_ai/act` + `/_ai/act/:id/confirm` (the supervised-write flow).
 - **MCP stdio server** — `scripts/mcp/aegis-mcp-stdio.ts` (+ `AEGIS_MCP_README.md`): a Claude-Desktop-driveable
   MCP server over stdio (offline in-process app, or a live service via `AEGIS_SERVICE_BASE_URL`).
@@ -460,8 +470,12 @@ agent-run AP + expense approvals with SoD + tamper-evident audit for field-servi
 `agentic-platform-design.md` · `ai-native-core.md` · `yc-rfs-fit.md` · `agentic-operations.md` ·
 `platform-omniscience.md` · `stack-sufficiency.md` · `knowledge-brain.md` · `ecosystem-ar-protocol.md` ·
 `agentify-and-policing.md` · **`red-team-consolidated.md`** (the actionable master).
-**Brain — [`docs/brain/`](docs/brain/README.md):** `README.md` (memory map + current state) ·
-`AUDIT_LOG.md` (T1–T14) · `instructions/` · `designs/` · `discussions/` (D1–D20, O1–O8) · `architectures/`.
+**Security & ABAC — [`docs/strategy/`](docs/strategy/):** **`security-model.md`** (the four fences +
+how AI inherits them) · **`security-findings.md`** (the T25 audit: 16 findings + remediation) ·
+**`abac-generalization.md`** (data-driven policy loader + the PIP plan).
+**Brain — [`docs/brain/`](docs/brain/README.md):** `README.md` (memory map) · `STATE.md` (canonical
+current state) · `PROGRESS.md` (standing briefing) · `AUDIT_LOG.md` (T1–T25) · `instructions/` ·
+`designs/` (incl. `agent-memory.md`) · `discussions/` (D1–D20, O1–O8) · `architectures/`.
 **Code:** the built substrate under `apps/` + `libs/`; the agentic keystone under `libs/ai-core/` +
 `libs/service-core/src/bootstrap/route-metadata.ts`.
 

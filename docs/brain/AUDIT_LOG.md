@@ -461,7 +461,7 @@
 - **Docs written:** `docs/strategy/security-model.md` (the 4 fences, request lifecycle, how AI inherits them,
   hard-vs-app-layer table) + `docs/strategy/security-findings.md` (the 16 findings with attacker story +
   file:line + fix + verdict, and a prioritized remediation plan). Brain docs updated to T25.
-- **Verified:** access-control **114/114** (10 suites, incl. new `db-policies.spec`), db **75/75** (9 suites,
+- **Verified:** access-control **114/114** (10 suites, incl. new `db-policies.spec`), db **79/79** (10 suites,
   incl. live `policy-read-port` 6/6), ai-core **154/154** unchanged; expense + user-management typecheck clean.
 - **Next (reprioritized by the audit):** P0 = the PIP (ABAC Phase 2) + per-service row-scope wiring — closes
   9/16 findings; P1 = agent-path binding/`isAgent`/memory authz. Then the live e2e demo (founder keys).

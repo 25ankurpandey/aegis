@@ -4,7 +4,7 @@
 > gets full context here with **zero re-explanation**: what we're building, every decision made, what
 > happened in every working session, where we are now, and what's next.
 >
-> **Last updated:** 2026-07-02 · Maintained by every agent that works on this repo (see Update Protocol).
+> **Last updated:** 2026-07-09 (T25) · Maintained by every agent that works on this repo (see Update Protocol).
 
 ---
 
@@ -29,31 +29,27 @@ audit log / the code. Never invent project history or decisions.
 
 > **Canonical current state now lives in [`STATE.md`](STATE.md)** (single-writer). Quick summary below.
 
-- **Phase:** research + design; **NO implementation yet** (explicit founder instruction — dense,
-  gap-free docs first; other agents implement from them).
-- **Done (2026-07-02):** ALL nine strategy docs written — `modular-platform-plan`, `agentic-platform-design`,
-  `ai-native-core`, `yc-rfs-fit`, `agentic-operations` (859 ln), `platform-omniscience`,
-  `stack-sufficiency`, `knowledge-brain`, `ecosystem-ar-protocol`, `agentify-and-policing`. See
-  [`designs/README.md`](designs/README.md) for statuses.
-- **Design phase COMPLETE (2026-07-02):** all nine strategy docs written AND adversarially red-teamed.
-  The master synthesis is [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md)
-  — **read it before any implementation** (16-item fix-before-build list, "build FIRST" slice, "do NOT
-  build until X" table). Decisions D18/D19/D20 capture the safe build sequence.
-- **BUILD STARTED (T14, 2026-07-02).** The keystone — the **authz-bound tool-registry generator** — is
-  built and prototyped GREEN: metadata stamping in `service-core` (`route-metadata.ts`; `authorize()`
-  and `validate()` now stamp permission + schema) + the new **`libs/ai-core`** lib
-  (`generateToolRegistry` + dependency-free Joi→JSON-Schema). `nx test ai-core` 6/6; 147 existing lib
-  tests still pass; strict typecheck clean. Proves self-sustainability (D15) — a new guarded route
-  becomes an agent tool with zero wiring. This is the read-only slice of D18; touches none of the
-  D19-gated write planes.
-- **Next increments (open):** (a) `filterToolsForPrincipal` — entitlement+permission pre-filter of the
-  registry; (b) wire the generator into a service bootstrap to expose the registry (diagnostic endpoint /
-  MCP server — MCP SDK needs `npm i`); (c) tool descriptions from the module manifest; (d) brain Phase-0
-  scaffolding (STATE.md/RESOLVER.md/log/). Write-autonomy on money remains GATED per D19; sell-the-
-  substrate products per D20.
-- **Known blockers:** session usage limits interrupt long workflows (resume via cached
-  `resumeFromRunId`); founder decisions pending in [`discussions/README.md`](discussions/README.md)
-  (O1–O8), esp. O4 "when do we flip to build?".
+> ⚠️ This is only a pointer — **the authoritative, always-current state is [`STATE.md`](STATE.md).**
+> Read that, not this summary. This blurb is refreshed occasionally; STATE is refreshed every session.
+
+- **Phase:** design COMPLETE; **BUILD well underway** on branch `feat/agentic-platform` (pushed to the
+  founder's personal GitHub), on **real infra** (live pgvector Postgres + Redis).
+- **Built & green (through T25):** the full read-only/propose/human-supervised agentic layer — the
+  authz-bound tool-registry generator, per-principal filter, tool-server + MCP transport, orchestrator +
+  **multi-LLM gateway**, the **danger/HITL layer** and **independent-verifier / hardened Trust Rule**
+  (the D19 supervised-write milestone), the running propose→confirm broker, **conversation + agent
+  memory** (the Wayfinder port: supersede/soft-invalidation/tiered recall/mem0 extraction), the
+  **pgvector app-brain** (self-knowledge RAG, indexed online), the **module entitlement** loop
+  (`tenant_modules` + Chargebee ingestion), and **ABAC Phase 0/1** (persisted-policy mapper + ports +
+  DB loader). Totals: ai-core 154/154, db 75/75 (live), access-control 114/114; strict typechecks clean.
+- **Security audited (T25):** the RBAC/ABAC/scope/RLS/agent/memory fence was adversarially audited →
+  [`../strategy/security-model.md`](../strategy/security-model.md) +
+  [`../strategy/security-findings.md`](../strategy/security-findings.md). Tenant isolation is a hard,
+  live-verified guarantee; 16 within-tenant findings (root cause: the un-populated PIP) are documented
+  with a remediation plan awaiting founder sign-off on two decisions (amount-cap source, memory scope).
+- **Still GATED:** fully-autonomous (no-human) money writes per D19; products/AR/omniscience per D20;
+  founder decisions in [`discussions/README.md`](discussions/README.md) (O1–O8).
+- **Known blocker:** session usage limits interrupt long workflows — resume via cached `resumeFromRunId`.
 
 ## Folder layout
 
@@ -62,6 +58,7 @@ docs/brain/
 ├── README.md            ← you are here — the memory map
 ├── RESOLVER.md          ← "if you need X, go here" routing table (start here when unsure)
 ├── STATE.md             ← canonical current state (what's done / in progress / next)
+├── PROGRESS.md          ← the standing morning-briefing (narrative: everything imagined/built/left)
 ├── AUDIT_LOG.md         ← append-only log of every working session/ask/outcome (fallback source)
 ├── instructions/        ← standing founder directives — the project "constitution"
 ├── designs/             ← index of all design docs + their status

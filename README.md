@@ -18,7 +18,11 @@ shared by every business service; the business services are the user-facing work
 - **RBAC + ABAC + row-level scope** — a Casbin-backed policy engine over a dotted `domain.action`
   vocabulary (**11 system roles × 57 permissions**, see the
   [access-control matrix](docs/access-control-matrix.md)), plus attribute conditions (e.g. approval
-  amount caps) and row-level scoping. Clean PDP / PEP / PAP / PIP split with a decision cache.
+  amount caps) and row-level scoping. Clean PDP / PEP / PAP / PIP split with a decision cache. *(The
+  PDP/PEP/PAP machinery is fully built; note that some attribute-dependent rules — approval amount caps,
+  `own_and_team` scope — are not yet enforced at runtime because the PIP does not populate principal
+  attributes at login. Exact, verified enforcement status is tracked in
+  [docs/strategy/security-findings.md](docs/strategy/security-findings.md).)*
 - **Identity & org modeling** — tenants, users, memberships, **dynamic/custom roles**, org hierarchy,
   **teams**, **labels/tags**, **invites**, **sessions** (list/revoke), workspace switching, and
   policy administration. user-management is the system of record and Policy Administration Point.
@@ -95,6 +99,9 @@ npm**, which enables `npm ci` → `npx jest` (unit/integration tests), the brows
 
 | I want to… | Go to |
 |---|---|
+| **Understand where Aegis is heading** (the agentic-first evolution — in progress on `feat/agentic-platform`) | [CONTEXT.md](CONTEXT.md) — the master context · [docs/brain/](docs/brain/README.md) — the project "second brain" |
+| **Understand the security/authorization model** (the four fences + how AI inherits them) | [docs/strategy/security-model.md](docs/strategy/security-model.md) |
+| **See the security audit findings** (verified enforcement status of RBAC/ABAC/scope/RLS) | [docs/strategy/security-findings.md](docs/strategy/security-findings.md) |
 | **Browse the API** (offline) | [docs/api/index.html](docs/api/index.html) — open in a browser. Source: [docs/api/openapi.yaml](docs/api/openapi.yaml) |
 | **Browse the API** (live, interactive) | <http://localhost:4000/api-docs> — interactive Swagger served by the gateway (available after `scripts/setup.sh`) |
 | **Understand the architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |

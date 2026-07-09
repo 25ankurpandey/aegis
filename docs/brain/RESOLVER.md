@@ -8,7 +8,12 @@
 |---|---|
 | **The whole picture / full context** (vision, ideas, architecture, decisions, current state) | [`/CONTEXT.md`](../../CONTEXT.md) — the master |
 | **Where we are RIGHT NOW / what's next** | [`STATE.md`](STATE.md) (canonical current state) |
-| **What happened in a past session, or an exact past ask** | [`AUDIT_LOG.md`](AUDIT_LOG.md) (T1–T14, append-only) — the fallback source |
+| **The standing morning-briefing** (narrative of everything imagined / built / left / pipeline) | [`PROGRESS.md`](PROGRESS.md) |
+| **What happened in a past session, or an exact past ask** | [`AUDIT_LOG.md`](AUDIT_LOG.md) (T1–T25, append-only) — the fallback source |
+| **Is our security/authorization/isolation model sound? how do the fences work? how does AI inherit them?** | [`/docs/strategy/security-model.md`](../strategy/security-model.md) |
+| **The security audit findings + remediation plan** (RBAC/ABAC/scope/RLS/agent/memory gaps) | [`/docs/strategy/security-findings.md`](../strategy/security-findings.md) |
+| **Making route policies data-driven** (generic DB-backed ABAC policy loader + the PIP) | [`/docs/strategy/abac-generalization.md`](../strategy/abac-generalization.md) |
+| **How agent memory works** (the Wayfinder port: tools, tiers, supersede, mem0 extraction) | [`designs/agent-memory.md`](designs/agent-memory.md) |
 | **Standing rules / how the founder wants work done** | [`instructions/README.md`](instructions/README.md) |
 | **A decision + its rationale, or the open questions** | [`discussions/README.md`](discussions/README.md) (D1–D20, O1–O8) |
 | **The architecture at a glance** (principle, four gates, contracts, stack, scale) | [`architectures/README.md`](architectures/README.md) |

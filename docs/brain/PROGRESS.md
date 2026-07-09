@@ -25,7 +25,7 @@ fully-designed **agentic-first, modular, governance-native platform**, with all 
 AND adversarially red-teamed. Since T14 we've been **building the agentic layer for real**, strictly inside
 the red-team's "safe first slice": everything is **read-only / propose-only** — the agent can discover and
 *call governed tools*, and *propose* dangerous actions, but **cannot autonomously write** to money/
-irreversible things. The whole governed loop works and is tested (**140/140 ai-core + 30/30 db tests** as of T23), the **D19
+irreversible things. The whole governed loop works and is tested (**154/154 ai-core + 79/79 db + 114/114 access-control** as of T25), the **D19
 safety gate is complete** (`executeSupervisedWrite` composes AUTHORIZATION × DANGER × VERIFIABILITY — a
 supervised write executes only when the ceremony is satisfied AND the independent verifier passes, and a
 test proves the unsafe path never reaches execution), and it is wrapped in a **running two-step
@@ -51,7 +51,7 @@ money/irreversible stay off by design** (the ceremony requires human evidence).
   verdict + a prioritized remediation plan).
 - **Built ABAC Phase 1:** the shared-DB `PolicyReadPort` (RLS-scoped, all-or-nothing, fail-closed) + `dbPolicies`
   loader wired on the expense approve routes behind `AEGIS_ABAC_DB_POLICIES=on` (default OFF); live 6/6 test.
-- **Totals:** access-control **114/114** (10 suites) · db **75/75** (9 suites, live) · ai-core **154/154**;
+- **Totals:** access-control **114/114** (10 suites) · db **79/79** (10 suites, live) · ai-core **154/154**;
   both apps typecheck. The audit reprioritized the roadmap: **the PIP (ABAC Phase 2) is now the P0 next slice.**
 
 ### What we did earlier (T24) — the Wayfinder memory port + app-brain online + billing loop closed + ABAC Phase 0

@@ -2,7 +2,15 @@
 
 > One row per design artifact. Statuses: **draft** → **researched+cited** (internet-first, sources
 > inline) → **red-teamed** (adversarial critique folded in) → **final** (founder-accepted). ⏳ = an
-> in-flight workflow is still producing/critiquing it. The docs live in [`../../strategy/`](../../strategy/).
+> in-flight workflow is still producing/critiquing it. The strategy docs live in
+> [`../../strategy/`](../../strategy/).
+>
+> **Implementation design docs (in THIS folder, describing shipped code):**
+> - [`agent-memory.md`](agent-memory.md) — the agent-memory feature (the Wayfinder port): store
+>   semantics (supersede/soft-invalidation/embedder-tag/minScore/profile-salient), the 3 memory tools,
+>   tiered context, mem0 post-turn extraction, and the exact Wayfinder→Aegis mapping.
+> - Security is documented in the strategy folder: [`../../strategy/security-model.md`](../../strategy/security-model.md)
+>   + [`../../strategy/security-findings.md`](../../strategy/security-findings.md).
 
 | Doc | Status | What it answers |
 |---|---|---|

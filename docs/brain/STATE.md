@@ -118,7 +118,7 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     **missing PIP** makes `own_and_team`, the approval amount-cap, and `manager_of` inert (silent no-op);
     invoice/pay-run/single-expense routes lack row-scope; propose→confirm doesn't bind confirmer↔proposer;
     the `isAgent` self-confirm guard is dead code; built-in memory tools have no per-user authz.
-  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **75/75** (9 suites, live
+  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **79/79** (10 suites, live
     pgvector/RLS/Chargebee/policy-read-port) · `nx test access-control` = **114/114** (10 suites); strict
     `tsc --noEmit` clean; expense + user-management apps typecheck.
 

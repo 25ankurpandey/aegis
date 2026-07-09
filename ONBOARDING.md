@@ -15,8 +15,10 @@
 > [`architectures/`](docs/brain/architectures/README.md) atlas. **Targeted docs first; audit log as
 > fallback.**
 >
-> **Last updated:** 2026-07-02 · **Owner:** Ankur Pandey (ankur.pandey@siterecon.ai), building this and
+> **Last updated:** 2026-07-09 (T25) · **Owner:** Ankur Pandey (ankur.pandey@siterecon.ai), building this and
 > a parallel AI-native project (Wayfinder). Built largely solo + AI agents (autonomous multi-pass).
+> **For current build state + test counts, see [`docs/brain/STATE.md`](docs/brain/STATE.md)** (this
+> narrative covers the vision; STATE is the always-current status).
 
 ---
 

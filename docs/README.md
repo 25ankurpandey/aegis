@@ -9,6 +9,30 @@ Row-Level Security**.
 This page is the index to every doc. Where any doc disagrees with [`../SPEC.md`](../SPEC.md),
 `SPEC.md` wins.
 
+> **Two layers of docs.** This index (and `SPEC.md`) describe the **shipped access-control platform**.
+> Aegis is also being evolved into an **agentic-first, modular platform** on the `feat/agentic-platform`
+> branch — that vision, current build state, and design/security corpus live in
+> [`../CONTEXT.md`](../CONTEXT.md) (master), the project "second brain" [`brain/`](brain/README.md), the
+> deep design docs in [`strategy/`](strategy/), and the security model + audit in
+> [`strategy/security-model.md`](strategy/security-model.md) + [`strategy/security-findings.md`](strategy/security-findings.md).
+
+---
+
+## Vision, strategy & security (the agentic evolution)
+
+- [`../CONTEXT.md`](../CONTEXT.md) — the master context: what Aegis is becoming, current build state
+  (§12), decisions, and the full document index (§18).
+- [`strategy/`](strategy/) — the deep design docs (modular-platform, agentic-platform, ai-native-core,
+  agentic-operations, …) + `red-team-consolidated.md` (the actionable build order).
+- [`strategy/security-model.md`](strategy/security-model.md) — the four authorization fences
+  (tenant-RLS / RBAC / ABAC / row-scope), the request lifecycle, and how the agent layer inherits them.
+- [`strategy/security-findings.md`](strategy/security-findings.md) — the verified security-audit
+  findings (enforcement status of every fence) + remediation plan.
+- [`strategy/abac-generalization.md`](strategy/abac-generalization.md) — the data-driven ABAC policy
+  loader + the PIP plan.
+- `docs/brain/` — the project "second brain": `STATE.md` (canonical current state), `PROGRESS.md`
+  (standing briefing), `AUDIT_LOG.md`, decisions, and the architecture atlas.
+
 ---
 
 ## Start here
