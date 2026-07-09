@@ -103,6 +103,11 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
   const newBroker = (idFactory?: () => string) =>
     new SupervisedActionBroker({ store: new InMemoryPendingActionStore(), idFactory });
 
+  // The proposing/confirming principal (token sub 'u1' in TENANT) and the tenant-namespaced storage
+  // key the broker now stores pending actions under (AGENT-06).
+  const proposer = { userId: 'u1', tenantId: TENANT };
+  const skey = (publicId: string) => `${TENANT}::${publicId}`;
+
   it('(a) propose an ALLOW (read) tool ⇒ status "allow" + the governed result (executed over HTTP)', async () => {
     const broker = newBroker();
     const id = '00000000-0000-4000-8000-0000000000aa';
@@ -111,6 +116,7 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
       args: { id },
       invoke,
       gateContext: { approverPoolSize: undefined },
+      proposer,
     });
     expect(res.status).toBe('allow');
     if (res.status !== 'allow') throw new Error('unreachable');
@@ -127,6 +133,7 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
       args: { items: ['a', 'b'] }, // count=2 ⇒ level 1 ⇒ confirm; no money/irreversible ⇒ reversible
       invoke: { ...invoke, fetchImpl: fetchSpy as unknown as typeof fetch },
       gateContext: { approverPoolSize: undefined },
+      proposer,
     });
     expect(res.status).toBe('needs_ceremony');
     if (res.status !== 'needs_ceremony') throw new Error('unreachable');
@@ -146,6 +153,7 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
       args: { id },
       invoke,
       gateContext: { approverPoolSize: undefined },
+      proposer,
     });
     expect(proposed.status).toBe('needs_ceremony');
     if (proposed.status !== 'needs_ceremony') throw new Error('unreachable');
@@ -154,6 +162,7 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
     const res = await broker.confirm({
       pendingId: 'pending-c',
       evidence: { stepUp: { verified: true } },
+      confirmer: proposer,
       verify: {
         deterministic: true,
         deterministicRecheck: async () => ({ value: 'ok' }),
@@ -168,7 +177,7 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
     expect(res.result?.status).toBe(200);
     expect(res.result?.body).toMatchObject({ data: { deleted: id } });
     // Executed ⇒ the pending action is consumed and cannot be replayed.
-    expect(await store.get('pending-c')).toBeUndefined();
+    expect(await store.get(skey('pending-c'))).toBeUndefined();
   });
 
   it('(d) confirm with bad/absent ceremony ⇒ executed:false and the pending action REMAINS', async () => {
@@ -181,20 +190,98 @@ describe('SupervisedActionBroker (propose → confirm, two-step governed flow)',
       args: { items: ['a', 'b'] }, // ⇒ confirm ceremony
       invoke: { ...invoke, fetchImpl: fetchSpy as unknown as typeof fetch },
       gateContext: { approverPoolSize: undefined },
+      proposer,
     });
 
-    const res = await broker.confirm({ pendingId: 'pending-d', evidence: {} }); // no confirmedAt/confirmed
+    const res = await broker.confirm({ pendingId: 'pending-d', evidence: {}, confirmer: proposer }); // no confirmedAt/confirmed
     expect(res.executed).toBe(false);
     expect(res.refusedReason).toMatch(/ceremony not satisfied/i);
     expect(fetchSpy).not.toHaveBeenCalled();
     // Fail-closed but retryable: the pending action is still there for a later valid confirm.
-    expect(await store.get('pending-d')).toBeDefined();
+    expect(await store.get(skey('pending-d'))).toBeDefined();
   });
 
   it('(e) confirm an UNKNOWN pendingId ⇒ a clear refusal (executed:false), no throw', async () => {
     const broker = newBroker();
-    const res = await broker.confirm({ pendingId: 'does-not-exist', evidence: { confirmed: true } });
+    const res = await broker.confirm({
+      pendingId: 'does-not-exist',
+      evidence: { confirmed: true },
+      confirmer: proposer,
+    });
     expect(res.executed).toBe(false);
     expect(res.refusedReason).toMatch(/no pending action/i);
+  });
+
+  it('(f) AGENT-01/06: a DIFFERENT-TENANT confirmer cannot find or execute the pending action', async () => {
+    const store = new InMemoryPendingActionStore();
+    const broker = new SupervisedActionBroker({ store, idFactory: () => 'pending-f' });
+    const fetchSpy = jest.fn();
+    await broker.propose({
+      tool: tool('/expense/v1/expenses', 'POST'),
+      args: { items: ['a', 'b'] },
+      invoke: { ...invoke, fetchImpl: fetchSpy as unknown as typeof fetch },
+      gateContext: { approverPoolSize: undefined },
+      proposer, // tenant TENANT
+    });
+    // A confirmer from another tenant computes a different namespaced key ⇒ not found ⇒ refused.
+    const otherTenant = '00000000-0000-4000-8000-0000000000ff';
+    const res = await broker.confirm({
+      pendingId: 'pending-f',
+      evidence: { confirmed: true },
+      confirmer: { userId: 'attacker', tenantId: otherTenant },
+    });
+    expect(res.executed).toBe(false);
+    expect(res.refusedReason).toMatch(/no pending action/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // The original tenant's action is untouched and still confirmable by its proposer.
+    expect(await store.get(skey('pending-f'))).toBeDefined();
+  });
+
+  it('(g) AGENT-01: a DIFFERENT same-tenant USER cannot complete a self-satisfiable ceremony', async () => {
+    const broker = new SupervisedActionBroker({
+      store: new InMemoryPendingActionStore(),
+      idFactory: () => 'pending-g',
+    });
+    await broker.propose({
+      tool: tool('/expense/v1/expenses', 'POST'),
+      args: { items: ['a', 'b'] }, // ⇒ confirm (self-satisfiable)
+      invoke,
+      gateContext: { approverPoolSize: undefined },
+      proposer, // user u1
+    });
+    const res = await broker.confirm({
+      pendingId: 'pending-g',
+      evidence: { confirmed: true },
+      confirmer: { userId: 'someone-else', tenantId: TENANT }, // same tenant, different user
+    });
+    expect(res.executed).toBe(false);
+    expect(res.refusedReason).toMatch(/only the proposing user/i);
+  });
+
+  it('(h) AGENT-05: confirm is REFUSED if the gate has tightened since propose (live facts)', async () => {
+    const broker = new SupervisedActionBroker({
+      store: new InMemoryPendingActionStore(),
+      idFactory: () => 'pending-h',
+    });
+    const proposed = await broker.propose({
+      tool: tool('/expense/v1/expenses', 'POST'),
+      args: { items: ['a', 'b'] }, // count=2 ⇒ confirm
+      invoke,
+      gateContext: { approverPoolSize: undefined },
+      proposer,
+    });
+    if (proposed.status !== 'needs_ceremony') throw new Error('unreachable');
+    expect(proposed.decision.ceremony).toBe('confirm');
+
+    // At confirm the app supplies facts re-derived against the LIVE state: the set has ballooned to a
+    // large destructive bulk ⇒ a stricter ceremony ⇒ the stale `confirm` challenge is voided.
+    const res = await broker.confirm({
+      pendingId: 'pending-h',
+      evidence: { confirmed: true },
+      confirmer: proposer,
+      liveFacts: { verbClass: 'delete', resourceClass: 'expense', count: 5000, irreversible: true },
+    });
+    expect(res.executed).toBe(false);
+    expect(res.refusedReason).toMatch(/tightened since propose/i);
   });
 });

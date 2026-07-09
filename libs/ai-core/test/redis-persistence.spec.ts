@@ -40,14 +40,24 @@ function buildPendingAction(id: string): PendingAction {
     tags: ['invoice', 'delete'],
   };
   const args = { count: 4211 };
-  const decision = evaluateActionGate(deriveDangerFacts(tool, args), { approverPoolSize: 3 });
+  const gateContext = { approverPoolSize: 3 };
+  const decision = evaluateActionGate(deriveDangerFacts(tool, args), gateContext);
   const invoke: InvokeContext = {
     baseUrl: 'http://127.0.0.1:4002',
     token: 'test-bearer',
     tenantId: TENANT_A,
     correlationId: 'corr-1',
   };
-  return { id, tool, args, invoke, decision, createdAt: Date.now() };
+  return {
+    id,
+    proposer: { userId: 'u1', tenantId: TENANT_A },
+    tool,
+    args,
+    invoke,
+    decision,
+    gateContext,
+    createdAt: Date.now(),
+  };
 }
 
 let redis: Redis;

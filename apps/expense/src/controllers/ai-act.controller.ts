@@ -56,6 +56,9 @@ export class AiActController {
       // Agent-initiated (AGENT-02): isAgent → a level-≥2 write escalates to a human second_approver
       // that the agent cannot self-satisfy with a confirm/typed-confirm it fabricates.
       gateContext: { approverPoolSize: undefined, isAgent: true },
+      // Bind the pending action to the proposing principal (AGENT-01) so only a legitimate party
+      // (same tenant; same user for self-confirm, a different user for second_approver) can confirm it.
+      proposer: { userId: req.principal?.userId, tenantId: invoke.tenantId },
     });
     res.status(200).json({ data: result });
   }
@@ -67,6 +70,11 @@ export class AiActController {
     const result = await broker.confirm({
       pendingId: routeParam(req, 'id'),
       evidence: body.evidence ?? {},
+      // The confirming principal (AGENT-01) — checked against the stored proposer (tenant + user).
+      confirmer: {
+        userId: req.principal?.userId,
+        tenantId: req.principal?.tenantId ?? String(req.headers['x-tenant-id'] ?? ''),
+      },
     });
     res.status(200).json({ data: result });
   }

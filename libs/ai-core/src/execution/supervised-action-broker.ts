@@ -3,7 +3,8 @@ import type { AegisTool } from '../tool-registry/types';
 import { invokeTool, type InvokeContext, type InvokeResult } from '../tool-server/tool-server';
 import { deriveDangerFacts } from '../orchestrator/derive-danger-facts';
 import { evaluateActionGate, type DangerGateContext } from '../danger/danger-gate';
-import type { DangerDecision } from '../danger/types';
+import { isCeremonyStricter } from '../danger/danger-policy';
+import type { DangerDecision, DangerFacts } from '../danger/types';
 import type { ApprovalGateway, ApprovalHandle } from '../danger/approval-gateway';
 import {
   executeSupervisedWrite,
@@ -36,14 +37,32 @@ import {
  * as for a human. The agent reasons; the governed core acts.
  */
 
+/** Identity of the principal on one side of the propose/confirm flow (AGENT-01 binding). */
+export interface PrincipalRef {
+  /** The acting user's id. Undefined only for a principal-less/system caller (then self-confirm is refused). */
+  userId?: string;
+  /** The tenant the action belongs to — the confirmer MUST match it (cross-tenant confirm is refused). */
+  tenantId: string;
+}
+
 /** A danger-gated action awaiting its human ceremony, persisted between `propose` and `confirm`. */
 export interface PendingAction {
+  /** Internal, tenant-namespaced storage key (`${tenantId}::${uuid}`) — NOT the client-facing id. */
   id: string;
+  /** Who proposed this action — the confirm side is checked against it (AGENT-01). */
+  proposer: PrincipalRef;
   tool: AegisTool;
   args: Record<string, unknown>;
   invoke: InvokeContext;
   decision: DangerDecision;
+  /** The gate context used at propose, stored so `confirm` can RE-EVALUATE the gate (AGENT-05). */
+  gateContext: DangerGateContext;
   createdAt: number;
+}
+
+/** Namespace a pending-action storage key by tenant (AGENT-06) so a cross-tenant lookup can never hit it. */
+function pendingStoreKey(tenantId: string, publicId: string): string {
+  return `${tenantId}::${publicId}`;
 }
 
 /**
@@ -101,6 +120,8 @@ export interface ProposeParams {
   invoke: InvokeContext;
   /** Context for the danger gate (approver pool size, classifier overrides, …). */
   gateContext: DangerGateContext;
+  /** WHO is proposing — bound to the pending action so only a legitimate party can confirm it (AGENT-01). */
+  proposer: PrincipalRef;
 }
 
 /** Input to {@link SupervisedActionBroker.confirm}. */
@@ -108,8 +129,14 @@ export interface ConfirmParams {
   pendingId: string;
   /** Proof the human completed the required ceremony. */
   evidence: CeremonyEvidence;
+  /** WHO is confirming — checked against the stored proposer (AGENT-01): same tenant always; same user
+   *  for self-satisfiable ceremonies; a DIFFERENT same-tenant user for `second_approver` (SoD). */
+  confirmer: PrincipalRef;
   /** Verification wiring forwarded to the supervised-write path (V1/V2 for material writes). */
   verify?: SupervisedWriteParams['verify'];
+  /** Optional facts re-derived against the LIVE state (e.g. an authoritative row COUNT) — lets the app
+   *  close the TOCTOU (AGENT-05). When omitted, facts are re-derived from the (frozen) args. */
+  liveFacts?: DangerFacts;
 }
 
 /**
@@ -134,7 +161,7 @@ export class SupervisedActionBroker {
    * the decision the human must satisfy — no HTTP invoke happens on this path.
    */
   async propose(params: ProposeParams): Promise<ProposeResult> {
-    const { tool, args, invoke, gateContext } = params;
+    const { tool, args, invoke, gateContext, proposer } = params;
     const decision = evaluateActionGate(deriveDangerFacts(tool, args), gateContext);
 
     if (decision.ceremony === 'allow') {
@@ -142,8 +169,20 @@ export class SupervisedActionBroker {
       return { status: 'allow', result };
     }
 
-    const id = this.idFactory();
-    const pending: PendingAction = { id, tool, args, invoke, decision, createdAt: Date.now() };
+    // The client-facing id is an opaque uuid; the STORAGE key is namespaced by the proposer's tenant
+    // (AGENT-06) so a confirm from another tenant computes a different key and can never find it.
+    const publicId = this.idFactory();
+    const storeKey = pendingStoreKey(proposer.tenantId, publicId);
+    const pending: PendingAction = {
+      id: storeKey,
+      proposer,
+      tool,
+      args,
+      invoke,
+      decision,
+      gateContext,
+      createdAt: Date.now(),
+    };
     await this.store.put(pending);
 
     let approval: ApprovalHandle | undefined;
@@ -151,7 +190,7 @@ export class SupervisedActionBroker {
       approval = await this.approvals.requireApproval({
         requesterPrincipal: invoke.token,
         tenantId: invoke.tenantId,
-        actionRef: id,
+        actionRef: publicId,
         decision,
         factsSummary: `${tool.name} ${JSON.stringify(args)}`,
         outOfBand: decision.requiresOutOfBand,
@@ -159,7 +198,7 @@ export class SupervisedActionBroker {
       });
     }
 
-    return { status: 'needs_ceremony', pendingId: id, decision, ...(approval ? { approval } : {}) };
+    return { status: 'needs_ceremony', pendingId: publicId, decision, ...(approval ? { approval } : {}) };
   }
 
   /**
@@ -169,10 +208,46 @@ export class SupervisedActionBroker {
    * replayed. A refused write leaves the pending action in place for a later, valid confirm.
    */
   async confirm(params: ConfirmParams): Promise<SupervisedWriteResult> {
-    const { pendingId, evidence, verify } = params;
-    const pending = await this.store.get(pendingId);
+    const { pendingId, evidence, verify, confirmer, liveFacts } = params;
+
+    // Look the action up under the CONFIRMER's tenant namespace (AGENT-06): an action proposed in a
+    // different tenant lives under a different key, so a cross-tenant confirm simply finds nothing.
+    const storeKey = pendingStoreKey(confirmer.tenantId, pendingId);
+    const pending = await this.store.get(storeKey);
     if (!pending) {
-      return { executed: false, refusedReason: `no pending action for id "${pendingId}" (unknown or expired)` };
+      return { executed: false, refusedReason: `no pending action for id "${pendingId}" (unknown, expired, or wrong tenant)` };
+    }
+
+    // AGENT-01 — proposer binding. Tenant is already enforced by the key; assert it defensively, then
+    // check the user relationship the ceremony requires.
+    if (pending.proposer.tenantId !== confirmer.tenantId) {
+      return { executed: false, refusedReason: 'confirmer tenant does not match the proposer tenant' };
+    }
+    const sameUser = confirmer.userId != null && confirmer.userId === pending.proposer.userId;
+    if (pending.decision.ceremony === 'second_approver') {
+      // Separation of duties: a DIFFERENT same-tenant user must approve — never the proposer.
+      if (sameUser) {
+        return { executed: false, refusedReason: 'second_approver requires a different user than the proposer (separation of duties)' };
+      }
+    } else {
+      // Self-satisfiable ceremonies (confirm / typed_confirm / step_up / cooling_off): only the
+      // proposing user may complete their own challenge — a bystander cannot trigger it.
+      if (!sameUser) {
+        return { executed: false, refusedReason: 'only the proposing user may complete this ceremony' };
+      }
+    }
+
+    // AGENT-05 — re-evaluate the gate at confirm time; NEVER execute under a decision weaker than a
+    // fresh evaluation. `liveFacts` (app-supplied, e.g. an authoritative live COUNT) closes the TOCTOU;
+    // absent it we re-derive from the frozen args, which still catches a danger-policy/context tightening.
+    const facts = liveFacts ?? deriveDangerFacts(pending.tool, pending.args);
+    const fresh = evaluateActionGate(facts, pending.gateContext);
+    if (isCeremonyStricter(fresh.ceremony, pending.decision.ceremony)) {
+      await this.store.delete(storeKey);
+      return {
+        executed: false,
+        refusedReason: `danger gate tightened since propose (now "${fresh.ceremony}", was "${pending.decision.ceremony}") — re-propose required`,
+      };
     }
 
     const res = await executeSupervisedWrite({
@@ -185,7 +260,7 @@ export class SupervisedActionBroker {
     });
 
     if (res.executed) {
-      await this.store.delete(pendingId);
+      await this.store.delete(storeKey);
     }
     return res;
   }

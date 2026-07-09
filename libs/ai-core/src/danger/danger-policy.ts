@@ -52,9 +52,17 @@ const LADDER: Ceremony[] = [
   'block',
 ];
 
-function strictnessOf(c: Ceremony): number {
+/** Ordinal of a ceremony on the escalation ladder (higher = stricter). Exported so a two-step flow
+ *  can compare a re-evaluated gate against a stored one (AGENT-05: never execute under a decision
+ *  weaker than a fresh evaluation). */
+export function strictnessOf(c: Ceremony): number {
   const i = LADDER.indexOf(c);
   return i === -1 ? 0 : i;
+}
+
+/** True iff ceremony `a` is STRICTER than `b` (used to void a stale pending action if the gate tightened). */
+export function isCeremonyStricter(a: Ceremony, b: Ceremony): boolean {
+  return strictnessOf(a) > strictnessOf(b);
 }
 
 /** The most restrictive of two ceremonies (danger never de-escalates). */
