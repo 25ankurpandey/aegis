@@ -16,6 +16,7 @@ const config: Config = {
   // Mirror of tsconfig.base.json `paths` so cross-lib imports resolve under ts-jest.
   moduleNameMapper: {
     '^@aegis/db$': `${root}/libs/db/src/index.ts`,
+    '^@aegis/access-control$': `${root}/libs/access-control/src/index.ts`,
     '^@aegis/service-core$': `${root}/libs/service-core/src/index.ts`,
     '^@aegis/shared-enums$': `${root}/libs/shared/enums/src/index.ts`,
     '^@aegis/shared-types$': `${root}/libs/shared/types/src/index.ts`,

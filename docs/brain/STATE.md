@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-07 (session T24). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-09 (session T25). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -105,26 +105,41 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     PAP write-time hardening in user-management + `scripts/abac/audit-policies.ts`) — the PolicyRow→PolicyRule
     mapper (all-or-nothing load, `$attr` validation, scope/wildcard-allow bans), port interfaces, and PAP
     rejection of invalid policies. NO authorize() behavior change. Per `docs/strategy/abac-generalization.md` §5.
-  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **69/69** (8 suites, live
-    pgvector/RLS/Chargebee) · `nx test access-control` = **104/104** (9 suites); strict `tsc --noEmit` clean;
-    expense + user-management apps typecheck.
+  - **[T25] ABAC Phase 1** (`libs/db/src/policy-read-port.ts` + `libs/access-control/src/policy-loader.ts`
+    `dbPolicies`/`combinePolicies` + expense/user-management bootstrap registration) — the shared-DB
+    `PolicyReadPort` (RLS-scoped raw SELECT of persisted `policies`, mapped all-or-nothing, FAIL-CLOSED on
+    error) wired on the two expense approve routes behind `AEGIS_ABAC_DB_POLICIES=on` (default OFF). Live
+    integration test (6/6): tenant A loads its deny policy, tenant B sees nothing (RLS), a malformed row
+    throws `POLICY_LOAD_FAILED`.
+  - **[T25] SECURITY AUDIT + docs** — multi-agent audit (4 dimensions, adversarially verified) →
+    `docs/strategy/security-model.md` (how the 4 fences work + how AI inherits them + 30 verified
+    guarantees) and `docs/strategy/security-findings.md` (16 confirmed findings + remediation plan). **The
+    tenant fence is a hard, live-verified guarantee; all findings are within-tenant.** Top gaps: the
+    **missing PIP** makes `own_and_team`, the approval amount-cap, and `manager_of` inert (silent no-op);
+    invoice/pay-run/single-expense routes lack row-scope; propose→confirm doesn't bind confirmer↔proposer;
+    the `isAgent` self-confirm guard is dead code; built-in memory tools have no per-user authz.
+  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **75/75** (9 suites, live
+    pgvector/RLS/Chargebee/policy-read-port) · `nx test access-control` = **114/114** (10 suites); strict
+    `tsc --noEmit` clean; expense + user-management apps typecheck.
 
 ## In progress
 - (nothing executing right now.)
 
-## Next (recommended order)
-1. **ABAC Phase 1** (per `docs/strategy/abac-generalization.md` §5) — `dbPolicies(action)` + the shared-DB
-   `PolicyReadPort` implementation + bootstrap registration in expense; wire `combinePolicies(db, amountCap)`
-   on the two expense approve routes behind a flag; seed a resource-only deny policy; then **Phase 2 = the PIP**
-   (populate `principal.attributes.teamIds`/`approvalLimit` — the load-bearing prerequisite).
-2. **Live end-to-end demo** — drop `AEGIS_LLM_BASE_URL`/`AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS`) →
-   the multi-LLM gateway lights up; run the `/_ai/act` supervised flow + agent memory against a live
-   `expense`, or the MCP stdio server into Claude Desktop. **Blocked on the founder** (gateway key). Also
-   founder-side: a real embedding provider key upgrades app-brain recall from lexical to semantic.
-3. **Memory-in-anger** — run the self-audit capability on real seeded data, index its findings via
-   `indexAuditProposal`, and exercise post-turn extraction end-to-end with the live gateway.
-4. Generative-UI **renderer** (web/Unity) + **voice**; enterprise/compliance hardening.
-5. Keep **fully-autonomous (no-human) money writes GATED** per D19; **products/AR/omniscience GATED** per D20.
+## Next (recommended order) — reprioritized by the T25 security audit
+1. **ABAC Phase 2 — THE PIP** (`docs/strategy/security-findings.md` P0) — populate `principal.attributes`
+   (`teamIds`/`approvalLimit`/`managerOf`) at `authenticate()` via the existing dormant `AttributeReadPort`.
+   ONE change closes 5 findings: the inert amount-cap (ABAC-01/AGENT-04), `own_and_team` collapse (SCOPE-04),
+   `manager_of` (ABAC-02), and the memory-user-scope root. Highest leverage.
+2. **Per-service row-scope wiring** (P0) — add resource loaders + scope-derived list filters to invoice,
+   pay-run, single-expense (`GET /expenses/:id`), and the expense LIST (SCOPE-01/02/03, ROWSCOPE-03).
+   Consider a registry/lint check that flags an owned-resource route lacking a scope mechanism.
+3. **Agent-path hardening** (P1) — bind pending actions to `(tenantId,userId)` + confirmer-match + namespace
+   the store key (AGENT-01/06); set `isAgent:true` on every agent gate context (AGENT-02); per-user memory
+   authz + provenance (AGENT-03/MEM-02/03 — decide tenant-shared vs per-user brain).
+4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
+   against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
+5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);
+   products/AR/omniscience GATED (D20).
 
 ## Gating open questions (need the founder — see discussions/README.md)
 O1 ecosystem scope · O2 dogfood vs sell-first · O4 pace/ownership of the build · O5 YC timing · O7

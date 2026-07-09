@@ -1,5 +1,5 @@
 import { Config, Logger, createService, onShutdown, CacheAdapter } from '@aegis/service-core';
-import { closeSequelize } from '@aegis/db';
+import { closeSequelize, registerDbPolicyReadPort } from '@aegis/db';
 import { initPolicyReload, stopPolicyWatcher } from '@aegis/access-control';
 import { initEventBus, isKafkaBus, getBus, KafkaBus } from '@aegis/events';
 import { container } from './ioc/container';
@@ -15,6 +15,10 @@ import { PUBLIC_PATHS } from './constants';
  */
 function init(): void {
   getIdentityContext(); // define identity models on the shared connection
+  // ABAC Phase 1: install the shared-DB PolicyReadPort in THIS process too (user-management's own
+  // future `dbPolicies` consumption — the read executes per consuming service, never cross-process;
+  // docs/strategy/abac-generalization.md §2.2/§3 Q6, §5 Phase 1). Dormant until a route wires it.
+  registerDbPolicyReadPort();
   loadProviders(); // bind controllers + services + repositories into the container
   initEventBus(); // producer-on-every-pod: publish to Kafka when KAFKA_BROKERS is set (else in-process)
 

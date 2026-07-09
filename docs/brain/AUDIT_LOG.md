@@ -420,4 +420,52 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T25.*
+## T25 — 2026-07-09 · Security fence audit (RBAC/ABAC/scope/RLS + AI + memory) + ABAC Phase 1 + security docs
+
+- **Ask:** is our memory + tool-calling secure/robust and does it respect RBAC/ABAC/scope? Specifically:
+  is the **user-level fence** enforced — if a user tries to fetch another team's expense report, does it
+  throw? Guarantee it or find the gap. Plus: continue implementation, and document all the security aspects
+  + all findings.
+- **Method:** a multi-agent Workflow — 4 read-only auditors (row-scope on routes / agent tool-calling path /
+  memory isolation / ABAC attribute enforcement) + a Phase 1 builder in parallel, then **adversarial
+  verification of every finding** by an independent agent that tried to refute it against the code + live DB.
+  Interrupted by session limits ~4× and resumed via `resumeFromRunId` each time (cached agents free) until all
+  20 verify agents + build completed.
+- **Answer to the founding question:** on expense-REPORT single-resource routes a cross-team fetch **is**
+  denied (fail-closed to owner-only). But invoice routes, pay-run routes, `GET /expenses/:id`, and the expense
+  LIST have **no reliable team fence**, and `own_and_team` itself is **inert** (silently degrades) because
+  `teamIds` is never in the JWT. So: partially guaranteed, with real gaps — exactly the class the founder
+  probed.
+- **Guarantees VERIFIED (30):** tenant isolation is a HARD, live-verified guarantee (FORCE + RESTRICTIVE RLS,
+  non-owner `aegis_app`, cross-tenant read/write empirically blocked); scope claim is server-derived + signed
+  (unforgeable); agent tools execute over the SAME guarded route with the caller's own token (no in-process
+  bypass); off-offer tools refused; danger facts server-derived (LLM can't game); supervised material writes
+  fail-closed AND-composed; pending actions non-replayable (TTL + delete-on-confirm).
+- **Findings CONFIRMED (16, all within-tenant; 1 cross-tenant claim REFUTED):**
+  - HIGH: SCOPE-01 (invoice no row-scope), SCOPE-02 (pay-run no row-scope), SCOPE-03 (`GET /expenses/:id`
+    skips scope), ROWSCOPE-03 (expense list scopes by role name not scope claim), AGENT-02 (`isAgent`
+    self-confirm guard is dead code — no prod path sets it), AGENT-03 (built-in memory tools: no authz,
+    cross-user forget/overwrite), ABAC-01 (amount cap inert — approver can approve any amount),
+    AGENT-01/AGENT-04 (partial: confirm doesn't bind confirmer↔proposer; money cap inert — both narrowed by
+    verification: no cross-tenant breach, material writes still verifier-gated).
+  - MEDIUM: AGENT-05 (confirm trusts stored danger decision — TOCTOU, no re-gate), AGENT-06 (pending-action
+    key global/no tenant namespace), MEM-02/03 (cross-user supersession + no provenance), SCOPE-04/05
+    (own_and_team collapse [fail-closed today]; missing-scope fails OPEN [latent]), MEM-04 (unvalidated
+    sessionId [latent]), ABAC-02 (`manager_of` always false).
+  - Root cause of ~9 findings: the **missing PIP** (`principal.attributes` never populated at login; the
+    `AttributeReadPort` exists but has zero callers).
+- **Built (ABAC Phase 1, per abac-generalization.md §5):** `libs/db/src/policy-read-port.ts` (shared-DB
+  RLS-scoped `PolicyReadPort`, all-or-nothing map, FAIL-CLOSED on error) + `policy-loader.ts` `dbPolicies`/
+  `combinePolicies` + bootstrap registration in expense & user-management + expense approve routes wired
+  behind `AEGIS_ABAC_DB_POLICIES=on` (default OFF). Recovered `policy-read-port.ts` from an interrupted run.
+- **Docs written:** `docs/strategy/security-model.md` (the 4 fences, request lifecycle, how AI inherits them,
+  hard-vs-app-layer table) + `docs/strategy/security-findings.md` (the 16 findings with attacker story +
+  file:line + fix + verdict, and a prioritized remediation plan). Brain docs updated to T25.
+- **Verified:** access-control **114/114** (10 suites, incl. new `db-policies.spec`), db **75/75** (9 suites,
+  incl. live `policy-read-port` 6/6), ai-core **154/154** unchanged; expense + user-management typecheck clean.
+- **Next (reprioritized by the audit):** P0 = the PIP (ABAC Phase 2) + per-service row-scope wiring — closes
+  9/16 findings; P1 = agent-path binding/`isAgent`/memory authz. Then the live e2e demo (founder keys).
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T26.*

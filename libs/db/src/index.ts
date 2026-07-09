@@ -31,6 +31,12 @@ export * from './brain/indexers';
 // Chargebee webhook → entitlement materialization (pure event mapper + idempotent applier).
 export * from './entitlement/chargebee-webhook';
 
+// ABAC Phase 1 (docs/strategy/abac-generalization.md §3 Q6 option (a)): the shared-DB PolicyReadPort
+// implementation — a model-free, RLS-scoped raw SELECT of persisted `policies` rows — plus its
+// per-service bootstrap registration (`registerDbPolicyReadPort()`). Registration is EXPLICIT (not
+// import-time like the feature-flag reader): a dormant service stays dormant until its bootstrap opts in.
+export * from './policy-read-port';
+
 // Make per-tenant feature-flag lookups live: importing @aegis/db (which every DB-backed service does
 // at bootstrap via its models context) registers the DB-backed reader into the service-core helper,
 // so `FeatureFlags.isEnabled(...)` resolves against `tenant_features` instead of failing soft to off.

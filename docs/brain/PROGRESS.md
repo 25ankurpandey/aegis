@@ -10,7 +10,7 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-07 (end of session T24). On branch **`feat/agentic-platform`**, pushed to
+> **Last updated:** 2026-07-09 (end of session T25). On branch **`feat/agentic-platform`**, pushed to
 > origin = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
 > **Postgres @ 55432** (migrated through 0034) + **Redis @ 6380**. (A Docker restart stops them:
 > `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`.)
@@ -35,7 +35,26 @@ infra** (pgvector Postgres + Redis) with a **multi-LLM gateway**, a **per-tenant
 self-audit that is verifier-gated and has no write path. **Fully-autonomous (no-human) writes on
 money/irreversible stay off by design** (the ceremony requires human evidence).
 
-### What we did last (T24) — the Wayfinder memory port + app-brain online + billing loop closed + ABAC Phase 0
+### What we did last (T25) — security fence audit (answering "is the user/team fence real?") + ABAC Phase 1 + security docs
+- **Answered the founder's core question with a verified audit.** Ran a multi-agent audit (4 fence dimensions,
+  every finding adversarially verified against the code + live DB). **Tenant fence = a HARD, live-proven
+  guarantee** (FORCE RLS, non-owner role, cross-tenant read/write empirically blocked). **The user/team fence
+  has real gaps** — exactly what was probed: a cross-team fetch is denied only on expense-REPORT routes;
+  invoice/pay-run/single-expense/expense-list routes have no reliable row-scope, and `own_and_team` is inert
+  (silently degrades) because `teamIds` is never in the token.
+- **16 findings confirmed (all within-tenant), 30 guarantees verified, 1 cross-tenant claim refuted.** Root
+  cause of ~9: the missing **PIP** (`principal.attributes` never populated). Also: amount-cap silently no-ops
+  (an approver can approve any amount), `isAgent` self-confirm guard is dead code, confirm doesn't bind
+  confirmer↔proposer, built-in memory tools have no per-user authz.
+- **Documented everything:** `docs/strategy/security-model.md` (how the 4 fences work + how AI inherits them +
+  the guarantees) and `docs/strategy/security-findings.md` (every finding with attacker story, file:line, fix,
+  verdict + a prioritized remediation plan).
+- **Built ABAC Phase 1:** the shared-DB `PolicyReadPort` (RLS-scoped, all-or-nothing, fail-closed) + `dbPolicies`
+  loader wired on the expense approve routes behind `AEGIS_ABAC_DB_POLICIES=on` (default OFF); live 6/6 test.
+- **Totals:** access-control **114/114** (10 suites) · db **75/75** (9 suites, live) · ai-core **154/154**;
+  both apps typecheck. The audit reprioritized the roadmap: **the PIP (ABAC Phase 2) is now the P0 next slice.**
+
+### What we did earlier (T24) — the Wayfinder memory port + app-brain online + billing loop closed + ABAC Phase 0
 - **Studied your Wayfinder memory/embedding infra** (`~/Documents/GitHub/Wayfinder`: ADR-0001, MemoryStore.kt,
   MemoryContextProvider.kt) and **ported the semantics, not the machinery**: supersede-by-subject,
   soft-invalidation (`valid_to`), embedder-space tagging, minScore recall, profile/salient tiers, the 3 memory
@@ -115,13 +134,15 @@ money/irreversible stay off by design** (the ceremony requires human evidence).
 ### In flight right now
 - (nothing executing — T23 integrated, verified, committed, and pushed.)
 
-### What to do next
-- **ABAC Phase 1** (`docs/strategy/abac-generalization.md` §5): `dbPolicies(action)` + the shared-DB
-  `PolicyReadPort` impl + expense bootstrap registration; `combinePolicies(db, amountCap)` on the two expense
-  approve routes behind a flag; seed a resource-only deny; then **Phase 2 = the PIP** (populate
-  `principal.attributes.teamIds`/`approvalLimit` — the prerequisite that makes the amount-cap actually deny).
-- **Run memory + self-audit in anger** — seed data, run the self-audit, `indexAuditProposal` its findings,
-  exercise recall + post-turn extraction end-to-end once the LLM gateway key lands.
+### What to do next (reprioritized by the T25 audit — see security-findings.md)
+- **P0 — ABAC Phase 2, THE PIP:** populate `principal.attributes` (`teamIds`/`approvalLimit`/`managerOf`) at
+  `authenticate()` via the dormant `AttributeReadPort`. ONE change closes 5 findings (inert amount-cap,
+  `own_and_team` collapse, `manager_of`, memory-user-scope root).
+- **P0 — per-service row-scope wiring:** resource loaders + scope-derived list filters on invoice, pay-run,
+  single-expense, and the expense list (SCOPE-01/02/03, ROWSCOPE-03).
+- **P1 — agent-path hardening:** bind pending actions to `(tenant,user)` + confirmer-match + namespaced key
+  (AGENT-01/06); set `isAgent:true` on agent gate contexts (AGENT-02); per-user memory authz + provenance
+  (AGENT-03/MEM-02/03 — decide tenant-shared "team brain" vs per-user).
 - **Founder unlocks:** the LLM gateway key (live e2e demo: `/_ai/act` + memory tools via Claude Desktop/MCP)
   and an embedding-provider key (app-brain recall goes from lexical to semantic behind the seam).
 - **Live end-to-end demo** with a real LLM gateway — *blocked on you*: drop `AEGIS_LLM_BASE_URL` +

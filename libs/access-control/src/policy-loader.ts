@@ -1,5 +1,8 @@
+import { ErrUtils } from '@aegis/service-core';
 import type { Permission } from '@aegis/shared-enums';
 import type { AccessShape } from '@aegis/shared-types';
+import { getPolicyReadPort } from './policy-ports';
+import { mapPolicyRows } from './policy-row-mapper';
 
 /**
  * ABAC policy loaders for `authorize({ policies })` (W5-04).
@@ -71,6 +74,54 @@ export function amountCapPolicies(action: Permission): PolicyLoader {
         conditions: [{ attribute: `resource.${RESOURCE_AMOUNT_ATTR}`, operator: 'gt', value: cap }],
       },
     ];
+  };
+}
+
+/**
+ * DB-backed ABAC policy loader (ABAC generalization Phase 1 —
+ * docs/strategy/abac-generalization.md §2.1/§2.2, §3 Q6, §5 Phase 1): the persisted-policy half the
+ * module docstring promised. Reads the tenant's active `policies` rows for `action` (plus the `'*'`
+ * wildcard bucket — the PDP matches deny rules on `action === '*'`) through the per-process
+ * {@link getPolicyReadPort} registry and maps them via `mapPolicyRows` into the
+ * `AccessShape.PolicyRule[]` the PDP evaluates. Same `PolicyLoader` signature as
+ * {@link amountCapPolicies}, so `combinePolicies(dbPolicies(a), amountCapPolicies(a))` runs both
+ * legs during the parity window (§5 Phase 5).
+ *
+ * FAIL-CLOSED, never `[]`-on-error (§3 Q4/Q6, §6): an empty rule list is a SEMANTIC state ("this
+ * tenant has no persisted policies for this action" — RBAC alone decides); an error must block.
+ *  - **Unregistered port ⇒ THROW** (the Q6 boot-order guard): a route wired to `dbPolicies` whose
+ *    service bootstrap never called the port registration is a deployment bug, not dormancy —
+ *    returning `[]` would silently un-gate allow-gated actions (pdp.ts:47-50, 93-97). The throw is
+ *    caught by `authorizeAny` → `next(err)` → 5xx (generic client message, full server log): 403
+ *    means "denied by policy", 5xx means "could not evaluate policy".
+ *  - **Port/DB errors PROPAGATE** untouched (same 5xx path).
+ *  - **Any unmappable persisted row fails the WHOLE load** (all-or-nothing, §3 Q1/Q8) — a silently
+ *    dropped deny fails open directly; a silently dropped allow fails open by emptying the PDP's
+ *    allow-gate. Applied here as defense-in-depth even though the default shared-DB port validates
+ *    before returning, so ANY registered `PolicyReadPort` implementation gets the same guard.
+ *
+ * Phase 1 scope: no cache (a direct indexed read per evaluation is the documented Phase-1 posture;
+ * the versioned Redis cache is Phase 3) and no `$attr` interpolation (Phase 4) — `$attr` markers, if
+ * present on persisted rows, ride through RAW and compare as literals, which is why Phase-1 policies
+ * use literal values only (§5 Phase 1).
+ */
+export function dbPolicies(action: Permission): PolicyLoader {
+  return async (principal) => {
+    const port = getPolicyReadPort();
+    if (!port) {
+      throw ErrUtils.system(
+        `POLICY_LOAD_FAILED: no PolicyReadPort registered in this process but a route is wired to dbPolicies('${action}') — call registerDbPolicyReadPort() (from @aegis/db) in this service's bootstrap (docs/strategy/abac-generalization.md §2.2, §3 Q6)`,
+      );
+    }
+    const rows = await port.listActive(principal.tenantId, action);
+    const { rules, errors } = mapPolicyRows(rows);
+    if (errors.length > 0) {
+      throw ErrUtils.system(
+        `POLICY_LOAD_FAILED: ${errors.length} unmappable persisted policies row(s) for permission '${action}' — all-or-nothing load refused (docs/strategy/abac-generalization.md §3 Q1/Q8)`,
+        { errors },
+      );
+    }
+    return rules;
   };
 }
 

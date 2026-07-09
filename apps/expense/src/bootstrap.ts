@@ -6,7 +6,7 @@ import {
   CacheAdapter,
   installSignalHandlers,
 } from '@aegis/service-core';
-import { closeSequelize } from '@aegis/db';
+import { closeSequelize, registerDbPolicyReadPort } from '@aegis/db';
 import { initEventBus, isKafkaBus, getBus, KafkaBus, initOutboxRelay, stopOutboxRelay } from '@aegis/events';
 import { registerBuiltinConnectors } from '@aegis/connectors';
 import { getApprovalContext } from '@aegis/approvals';
@@ -30,6 +30,12 @@ import { registerRecordUpdateConsumer } from './consumers/record-update.consumer
 async function init(): Promise<void> {
   getExpenseContext(); // define expense models on the shared connection
   getApprovalContext(); // define the shared approval-engine models on the same connection (the engine needs them)
+  // ABAC Phase 1: install the shared-DB PolicyReadPort so `dbPolicies(...)` can read persisted
+  // `policies` rows IN THIS PROCESS (one process per service — registering only in user-management
+  // would leave the port undefined here and fail-close every wired route with a 5xx; see
+  // docs/strategy/abac-generalization.md §2.2/§3 Q6). Registration alone is dormant: rules are only
+  // consulted on routes that wire a `policies: dbPolicies(...)` loader (flag-gated in the controller).
+  registerDbPolicyReadPort();
   registerBuiltinConnectors(); // register the mock ERP connectors used on report approval
   loadProviders(); // bind controllers + services + repositories into the container
 

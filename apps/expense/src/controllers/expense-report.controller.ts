@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { inject } from 'inversify';
 import { controller, httpGet, httpPost } from 'inversify-express-utils';
 import {
+  Config,
   ErrUtils,
   FeatureFlags,
   RequestContext,
@@ -12,7 +13,14 @@ import {
 } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants, PaginationConstants } from '@aegis/shared-constants';
-import { authenticate, authorize, amountCapPolicies } from '@aegis/access-control';
+import {
+  authenticate,
+  authorize,
+  amountCapPolicies,
+  combinePolicies,
+  dbPolicies,
+  type PolicyLoader,
+} from '@aegis/access-control';
 import type { AccessShape } from '@aegis/shared-types';
 import { RecordAnnotationFeatureFlag, withTenantTransaction } from '@aegis/db';
 import { ExpenseService } from '../services/expense.service';
@@ -35,6 +43,32 @@ import {
  * action sub-resources, one permission each. Tenant is ambient (RLS) — there is no tenant path
  * segment. Lists return the `{ data, meta }` shape.
  */
+/** Env flag gating the ABAC Phase-1 DB-backed policy leg on the approve routes. Default OFF. */
+const DB_POLICIES_FLAG = 'AEGIS_ABAC_DB_POLICIES';
+
+/**
+ * The `policies:` loader for the two `ExpenseReportApprove` routes (ABAC generalization Phase 1 —
+ * docs/strategy/abac-generalization.md §5 Phase 1, §2.2).
+ *
+ * Flag OFF (`AEGIS_ABAC_DB_POLICIES` !== 'on', the default) ⇒ EXACTLY today's behavior: the W5-04
+ * hardcoded `amountCapPolicies` leg alone. Flag ON ⇒ `combinePolicies(dbPolicies, amountCapPolicies)`
+ * — persisted tenant-authored `policies` rows (read RLS-scoped via the PolicyReadPort registered in
+ * bootstrap) evaluated ALONGSIDE the legacy helper, which stays wired until matrix parity is proven
+ * (§5 Phase 5; the helper is the reference implementation and the rollback path). The flag is read
+ * per request so toggling needs no re-wiring; with it ON, a policy-load failure fail-closes the
+ * request as a 5xx (§3 Q4 — 403 = denied by policy, 5xx = could not evaluate policy).
+ */
+const approvePolicies: PolicyLoader = (principal, resource) => {
+  const loader =
+    Config.get(DB_POLICIES_FLAG) === 'on'
+      ? combinePolicies(
+          dbPolicies(Permission.ExpenseReportApprove),
+          amountCapPolicies(Permission.ExpenseReportApprove),
+        )
+      : amountCapPolicies(Permission.ExpenseReportApprove);
+  return loader(principal, resource);
+};
+
 @controller(`/expense${ApiConstants.PublicPrefix}`)
 export class ExpenseReportController {
   constructor(@inject(ExpenseService) private readonly expense: ExpenseService) {}
@@ -88,7 +122,8 @@ export class ExpenseReportController {
       resource: (req) => loadReportResource(req),
       // W5-04 ABAC: deny an over-cap approval even though RBAC granted `approve` (amount-cap example
       // "an approver may approve up to $X"). The cap is the approver's `approvalLimit` attribute.
-      policies: amountCapPolicies(Permission.ExpenseReportApprove),
+      // ABAC Phase 1: with AEGIS_ABAC_DB_POLICIES=on, persisted tenant policies ride along too.
+      policies: approvePolicies,
     }),
     validate(decideSchema),
   )
@@ -116,7 +151,8 @@ export class ExpenseReportController {
     authorize(Permission.ExpenseReportApprove, {
       resource: (req) => loadReportResource(req),
       // W5-04 ABAC amount-cap (same gate as /decisions; this is its backward-compat alias).
-      policies: amountCapPolicies(Permission.ExpenseReportApprove),
+      // ABAC Phase 1: with AEGIS_ABAC_DB_POLICIES=on, persisted tenant policies ride along too.
+      policies: approvePolicies,
     }),
     validate(approveSchema),
   )
