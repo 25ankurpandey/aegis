@@ -1,5 +1,39 @@
 # AGENTS.md — Context for AI agents working on Aegis
 
+<!-- ▶ RESUME HERE — refresh this block at the end of every pass. Canonical status = docs/brain/STATE.md. -->
+> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-09, T26)
+>
+> **Branch:** `feat/agentic-platform` (pushed to origin = personal GitHub `25ankurpandey/aegis`; `main`
+> untouched). **Infra:** local pgvector Postgres @ 55432 + Redis @ 6380 — a Docker restart stops them, so
+> run `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d` before live tests.
+>
+> **Milestone reached (a clean completion event).** Aegis has been evolved from the shipped access-control
+> platform into an **agentic-first platform** on the governed core, on real infra, then **security-hardened**:
+> the agentic layer (read/propose/human-supervised), multi-LLM gateway, module-entitlement loop, pgvector
+> app-brain + agent memory (the Wayfinder port), the first propose-only autonomous capability, and a full
+> security audit with **13 of 16 findings remediated** — the tenant + user/team fence is now enforced
+> end-to-end and tested (RLS + single-resource + list, off the signed scope claim, fail-closed).
+> Everything green together: **707 tests across 8 projects**, strict typechecks clean, tree clean & pushed.
+>
+> **What to pick up next** (nothing half-done; each item is a fresh, well-scoped pass):
+> 1. **Two founder-gated decisions** (see `docs/strategy/security-findings.md` §Recommendations) — Decision 1:
+>    where `approvalLimit` lives → turns the (currently inert) amount-cap on [ABAC-01/AGENT-04]; Decision 2:
+>    the memory scoping model → per-user memory authz + provenance [AGENT-03/MEM-*]. The 3 remaining findings
+>    block on these. ABAC-04 (deny-reason redaction) rides with Decision 1.
+> 2. **No-decision follow-ups:** own_and_team teammates in the *expense list* (fail-closed/safe today); a
+>    lint/registry check flagging any owned-resource route lacking a row-scope mechanism.
+> 3. **Founder-gated unlocks:** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` + agent memory via
+>    MCP/Claude Desktop); an embedding-provider key upgrades app-brain recall from lexical → semantic.
+>
+> **The one live residual risk to know:** the approval amount-cap is still inert (an approver can approve
+> any amount) — no `approvalLimit` source exists yet; that's exactly Decision 1.
+>
+> **Read next, in order:** `docs/brain/STATE.md` (canonical current state + Next) → `docs/brain/PROGRESS.md`
+> (standing narrative briefing) → `docs/strategy/security-findings.md` (the audit + what's left) →
+> `CONTEXT.md` (full vision/architecture). Update `STATE.md` + append to `docs/brain/AUDIT_LOG.md` every pass.
+
+---
+
 > **⚠️ START HERE — the product vision has evolved far beyond this file.** This document remains accurate
 > for the *originally-built access-control platform* (the current shipped code), but Aegis is becoming an
 > **agentic-first, modular, multi-industry, governance-native platform**. For the FULL current context —
