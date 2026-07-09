@@ -1,5 +1,6 @@
-import { OptimisticLockError, type Transaction } from 'sequelize';
+import { Op, OptimisticLockError, type Transaction } from 'sequelize';
 import { ErrUtils } from '@aegis/service-core';
+import { type RowScopeListFilter } from '@aegis/access-control';
 import { InvoiceShape } from '@aegis/shared-types';
 import { ApprovalRecordType, InvoiceDuplicateStatus, TableName } from '@aegis/shared-enums';
 import { withRecordAnnotationListFilters } from '@aegis/db';
@@ -39,6 +40,7 @@ export class InvoiceRepository {
     page: number,
     pageSize: number,
     t: Transaction,
+    rowScope?: RowScopeListFilter,
   ): Promise<{ rows: InvoiceShape.InvoiceRow[]; total: number }> {
     const { Invoice } = getInvoiceContext();
     const where = withRecordAnnotationListFilters(
@@ -49,8 +51,15 @@ export class InvoiceRepository {
         recordType: ApprovalRecordType.Invoice,
         sequelize: getInvoiceContext().sequelize,
       },
-    ) as Record<string, unknown>;
+    ) as Record<string | symbol, unknown>;
     if (filter.vendorId) where['vendor_id'] = filter.vendorId;
+    // Row-scope (SCOPE-01 list half): own → created/submitted by me; own_and_team → + my teams; all →
+    // no restriction. Fail-closed (no userId ⇒ match nothing). ANDed so it never clobbers other filters.
+    const scopePredicate = invoiceScopePredicate(rowScope);
+    if (scopePredicate) {
+      const existingAnd = Array.isArray(where[Op.and]) ? (where[Op.and] as unknown[]) : [];
+      where[Op.and] = [...existingAnd, scopePredicate];
+    }
     const result = await Invoice.findAndCountAll({
       where,
       order: [['created_at', 'DESC']],
@@ -220,4 +229,22 @@ export class InvoiceRepository {
     const { InvoiceActivity } = getInvoiceContext();
     await InvoiceActivity.create({ ...data }, { transaction: t });
   }
+}
+
+/**
+ * Build the Sequelize row-scope predicate for the invoice list from a {@link RowScopeListFilter}.
+ * `all` (or absent) → undefined (no restriction). `own`/`own_and_team` → an OR of the ownership
+ * columns (`created_by`/`submitted_by`) plus, for teams, `team_id ∈ teamIds`. Fail-closed: a scoped
+ * filter with no `userId` matches nothing (`id IS NULL`), so a malformed principal never sees rows.
+ */
+function invoiceScopePredicate(rowScope?: RowScopeListFilter): Record<symbol, unknown> | undefined {
+  if (!rowScope || rowScope.scope === 'all') return undefined;
+  const or: Record<string, unknown>[] = [];
+  if (rowScope.userId) {
+    or.push({ created_by: rowScope.userId }, { submitted_by: rowScope.userId });
+  }
+  if (rowScope.scope === 'own_and_team' && rowScope.teamIds.length > 0) {
+    or.push({ team_id: { [Op.in]: rowScope.teamIds } });
+  }
+  return { [Op.or]: or.length > 0 ? or : [{ id: null }] };
 }

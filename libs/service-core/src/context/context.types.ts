@@ -11,6 +11,11 @@ export interface RequestContextData {
   userId?: string;
   /** Set by the PEP after authentication. */
   roles?: string[];
+  /** Row-level scope claim (own_only | own_and_team | all), set by the PEP — drives list-route
+   *  scope filters in services that have no single resource for checkRowScope to gate. */
+  scope?: string;
+  /** The principal's team ids (PIP attribute), set by the PEP — used by own_and_team list filters. */
+  teamIds?: string[];
   /** X-Correlation-Id — the single request-tracking id, propagated unchanged across hops. */
   correlationId: string;
   /** X-Caller — logical origin (client app / user agent). */

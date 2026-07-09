@@ -15,6 +15,7 @@
  */
 export * from './enforcer';
 export * from './scope';
+export * from './row-scope-filter';
 export * from './condition-evaluator';
 export * from './pdp';
 export * from './pep';

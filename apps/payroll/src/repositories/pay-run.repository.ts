@@ -1,5 +1,6 @@
 import { Op, type Transaction, type CreationAttributes, type Model } from 'sequelize';
 import { ErrUtils } from '@aegis/service-core';
+import { type RowScopeListFilter } from '@aegis/access-control';
 import { PayrollShape } from '@aegis/shared-types';
 import { ApprovalRecordType, TableName } from '@aegis/shared-enums';
 import { withRecordAnnotationListFilters } from '@aegis/db';
@@ -36,13 +37,21 @@ export class PayRunRepository {
     page: number,
     pageSize: number,
     t: Transaction,
+    rowScope?: RowScopeListFilter,
   ): Promise<{ rows: PayrollShape.PayRunRow[]; total: number }> {
     const { PayRun } = getPayrollContext();
     const where = withRecordAnnotationListFilters({}, filter, {
       tableName: TableName.PayRuns,
       recordType: ApprovalRecordType.PayRun,
       sequelize: getPayrollContext().sequelize,
-    });
+    }) as Record<string | symbol, unknown>;
+    // Row-scope (SCOPE-02 list half): own → pay runs I created; own_and_team → + my teams'; all →
+    // unrestricted. Fail-closed (no userId ⇒ match nothing). ANDed so it never clobbers other filters.
+    const scopePredicate = payRunScopePredicate(rowScope);
+    if (scopePredicate) {
+      const existingAnd = Array.isArray(where[Op.and]) ? (where[Op.and] as unknown[]) : [];
+      where[Op.and] = [...existingAnd, scopePredicate];
+    }
     const result = await PayRun.findAndCountAll({
       where,
       order: [['created_at', 'DESC']],
@@ -257,4 +266,19 @@ export class PayRunRepository {
     }
     return summary;
   }
+}
+
+/**
+ * Sequelize row-scope predicate for the pay-run list from a {@link RowScopeListFilter}. `all`/absent
+ * → undefined. `own` → `created_by = me`; `own_and_team` → that OR `team_id ∈ teamIds`. Fail-closed:
+ * a scoped filter with no `userId` matches nothing (`id IS NULL`).
+ */
+function payRunScopePredicate(rowScope?: RowScopeListFilter): Record<symbol, unknown> | undefined {
+  if (!rowScope || rowScope.scope === 'all') return undefined;
+  const or: Record<string, unknown>[] = [];
+  if (rowScope.userId) or.push({ created_by: rowScope.userId });
+  if (rowScope.scope === 'own_and_team' && rowScope.teamIds.length > 0) {
+    or.push({ team_id: { [Op.in]: rowScope.teamIds } });
+  }
+  return { [Op.or]: or.length > 0 ? or : [{ id: null }] };
 }

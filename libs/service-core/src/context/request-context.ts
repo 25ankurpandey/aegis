@@ -53,6 +53,16 @@ export class RequestContext {
     return RequestContext.tryGet()?.roles ?? [];
   }
 
+  /** The row-level scope claim (own_only | own_and_team | all), or undefined if unauthenticated. */
+  static scope(): string | undefined {
+    return RequestContext.tryGet()?.scope;
+  }
+
+  /** The principal's team ids (PIP attribute), or [] if none / unauthenticated. */
+  static teamIds(): string[] {
+    return RequestContext.tryGet()?.teamIds ?? [];
+  }
+
   static correlationId(): string {
     return RequestContext.get().correlationId;
   }

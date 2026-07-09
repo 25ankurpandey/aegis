@@ -22,6 +22,7 @@ import {
   detachRecordTags,
   withTenantTransaction,
 } from '@aegis/db';
+import { rowScopeListFilter } from '@aegis/access-control';
 import { makeEnvelope, stageOutboxEvent, EventTopic } from '@aegis/events';
 import { AuditLogger } from '@aegis/audit';
 import { ActivityLogger } from '@aegis/activity';
@@ -139,8 +140,10 @@ export class PayRunService {
     page: number,
     pageSize: number,
   ): Promise<PayrollShape.PayRunListResult> {
+    // Row-scope the collection by the principal's scope claim (SCOPE-02 list half).
+    const rowScope = rowScopeListFilter();
     return withTenantTransaction(async (t) => {
-      const { rows, total } = await this.repo.listPayRuns(filter, page, pageSize, t);
+      const { rows, total } = await this.repo.listPayRuns(filter, page, pageSize, t, rowScope);
       return { data: rows.map((row) => this.toDto(row)), meta: { total, page, pageSize } };
     });
   }

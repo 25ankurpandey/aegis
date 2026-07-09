@@ -8,6 +8,7 @@ import {
   detachRecordTags,
   withTenantTransaction,
 } from '@aegis/db';
+import { rowScopeListFilter } from '@aegis/access-control';
 import { makeEnvelope, stageOutboxEvent, EventTopic } from '@aegis/events';
 import { AuditLogger } from '@aegis/audit';
 import { ActivityLogger } from '@aegis/activity';
@@ -399,8 +400,11 @@ export class InvoiceService {
     page: number,
     pageSize: number,
   ): Promise<InvoiceShape.InvoiceListResult> {
+    // Row-scope the collection by the principal's scope claim (SCOPE-01 list half): own → only
+    // invoices they created/submitted; own_and_team → + their teams'; all → unrestricted (RLS bounds).
+    const rowScope = rowScopeListFilter();
     return withTenantTransaction(async (t) => {
-      const { rows, total } = await this.repo.list(filter, page, pageSize, t);
+      const { rows, total } = await this.repo.list(filter, page, pageSize, t, rowScope);
       return { data: rows.map((r) => this.toDto(r)), meta: { total, page, pageSize } };
     });
   }

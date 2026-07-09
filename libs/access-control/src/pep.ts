@@ -62,6 +62,10 @@ export function authenticate(): RequestHandler {
     req.principal = principal;
     RequestContext.set('userId', principal.userId);
     RequestContext.set('roles', principal.roles);
+    // Surface scope + team ids so services can compile list-route row-scope filters (there is no
+    // single resource for checkRowScope to gate on a collection endpoint).
+    RequestContext.set('scope', principal.scope);
+    RequestContext.set('teamIds', (principal.attributes?.['teamIds'] as string[] | undefined) ?? []);
     return next();
   });
 }
