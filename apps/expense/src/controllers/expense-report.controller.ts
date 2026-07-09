@@ -284,6 +284,9 @@ async function loadReportResource(req: Request): Promise<AccessShape.ResourceRef
     type: 'expense_report',
     id,
     ownerId: report?.submitter_id,
+    // teamId makes own_and_team scope actually enforce: a teammate (same team_id) is allowed, a
+    // different team is denied. Paired with the PIP that now populates principal.attributes.teamIds.
+    teamId: report?.team_id ?? undefined,
     attributes: report ? { status: report.status, amount: Number(report.total_amount) } : {},
   };
 }

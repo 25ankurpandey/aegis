@@ -11,9 +11,21 @@ const principal = (over: Partial<AccessShape.Principal> = {}): AccessShape.Princ
 });
 
 describe('checkRowScope() — row-level visibility (separate from Casbin)', () => {
-  it('AllRecords or no scope allows any resource', () => {
+  it('AllRecords allows any resource', () => {
     expect(checkRowScope(principal({ scope: Scope.AllRecords }), { type: 'r', ownerId: 'x' }).ok).toBe(true);
-    expect(checkRowScope(principal(), { type: 'r', ownerId: 'x' }).ok).toBe(true);
+  });
+
+  it('a MISSING scope claim FAIL-CLOSES to own-only (SCOPE-05), not allow-all', () => {
+    // not the owner → denied
+    expect(checkRowScope(principal(), { type: 'r', ownerId: 'x' }).ok).toBe(false);
+    // the owner → allowed
+    expect(checkRowScope(principal(), { type: 'r', ownerId: 'u1' }).ok).toBe(true);
+  });
+
+  it('an UNRECOGNIZED scope value is DENIED (fail-closed), never allowed', () => {
+    expect(
+      checkRowScope(principal({ scope: 'bogus_scope' as unknown as Scope }), { type: 'r', ownerId: 'u1' }).ok,
+    ).toBe(false);
   });
 
   it('no resource (collection-level) is allowed', () => {

@@ -58,6 +58,10 @@ export class AuthService {
         permissions: access.permissions,
         scope: access.scope,
         aud: 'aegis',
+        // PIP attributes minted into the signed token (unforgeable). They power own_and_team row
+        // scope (teamIds) and the manager_of ABAC operator (managerOf). Freshness = token TTL; a
+        // team/hierarchy change takes effect on the next login/refresh.
+        attributes: { teamIds: access.teamIds, managerOf: access.managerOf },
       };
       const session = await this.sessions.create(
         {

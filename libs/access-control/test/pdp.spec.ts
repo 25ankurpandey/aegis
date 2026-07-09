@@ -7,6 +7,9 @@ const principal = (over: Partial<AccessShape.Principal> = {}): AccessShape.Princ
   tenantId: 't1',
   roles: ['approver'],
   permissions: [Permission.ExpenseReportApprove],
+  // all-records scope so ABAC-policy assertions aren't gated by row scope (SCOPE-05 now
+  // fail-closes a missing scope to own-only).
+  scope: Scope.AllRecords,
   ...over,
 });
 

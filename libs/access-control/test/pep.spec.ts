@@ -37,6 +37,10 @@ const approverInA = (over: Partial<AccessShape.Principal> = {}): AccessShape.Pri
   userId: 'u1',
   tenantId: TENANT_A,
   roles: [SystemRole.Approver],
+  // Default to all-records scope so the amount-cap/ABAC assertions aren't gated by row scope
+  // (SCOPE-05 hardening now fail-closes a missing scope to own-only). The row-scope test overrides
+  // this to OwnOnly explicitly.
+  scope: Scope.AllRecords,
   ...over,
 });
 

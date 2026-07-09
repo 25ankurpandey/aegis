@@ -222,6 +222,10 @@ export namespace UserManagementShape {
     roles: string[];
     permissions: string[];
     scope: string;
+    /** Team ids the user belongs to (PIP; drives `own_and_team` row scope). */
+    teamIds: string[];
+    /** User ids this user manages (PIP; drives the `manager_of` ABAC operator). */
+    managerOf: string[];
   }
 
   // ---- Repository write inputs ----
@@ -482,5 +486,15 @@ export namespace UserManagementShape {
     permissions: string[];
     scope: string;
     aud: string;
+    /**
+     * Subject attributes for ABAC (the PIP output, minted at login so they ride in the signed token
+     * and cannot be forged). `teamIds` powers `own_and_team` row scope; `managerOf` powers the
+     * `manager_of` policy operator. Absent on legacy tokens (the PEP treats missing as empty).
+     */
+    attributes?: {
+      teamIds?: string[];
+      managerOf?: string[];
+      [key: string]: unknown;
+    };
   }
 }

@@ -10,7 +10,8 @@ describe('admin surface validators', () => {
     const { error } = createPolicySchema.validate({
       permission: 'expense.report.approve',
       effect: 'allow',
-      rule: { subject: { approvalLimit: { gte: 1000 } } },
+      // v1 envelope is {conditions} only (Phase 0 PAP hardening); ad-hoc keys are rejected.
+      rule: { conditions: [{ attribute: 'resource.amount', operator: 'lte', value: 100000 }] },
       priority: 10,
     });
     expect(error).toBeUndefined();

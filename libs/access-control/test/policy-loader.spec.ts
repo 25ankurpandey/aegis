@@ -1,12 +1,15 @@
 import { amountCapPolicies, combinePolicies, APPROVAL_LIMIT_ATTR } from '../src/policy-loader';
 import { evaluateAbac } from '../src/pdp';
-import { Permission } from '@aegis/shared-enums';
+import { Permission, Scope } from '@aegis/shared-enums';
 import type { AccessShape } from '@aegis/shared-types';
 
 const principal = (over: Partial<AccessShape.Principal> = {}): AccessShape.Principal => ({
   userId: 'u1',
   tenantId: 't1',
   roles: ['approver'],
+  // all-records scope: these tests exercise the amount-cap ABAC path, not row scope (which now
+  // fail-closes a missing scope to own-only — SCOPE-05).
+  scope: Scope.AllRecords,
   ...over,
 });
 

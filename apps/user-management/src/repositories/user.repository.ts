@@ -1,6 +1,7 @@
-import type { Transaction } from 'sequelize';
+import { QueryTypes, type Transaction } from 'sequelize';
 import { SystemRole, UserStatus } from '@aegis/shared-enums';
 import { UserManagementShape } from '@aegis/shared-types';
+import { getSequelize } from '@aegis/db';
 import { provideSingleton } from '../ioc/container';
 import { getIdentityContext } from '../models/database-context';
 
@@ -93,9 +94,15 @@ export class UserRepository {
 
   /** Resolve the user's role name(s), flattened permission names, and row-level scope. */
   async getAccess(userId: string, t: Transaction): Promise<UserManagementShape.UserAccess> {
+    // PIP attributes (teamIds + managerOf) are loaded regardless of role assignment so that a
+    // scoped user still gets them; they ride into the signed token at login (see AuthService.login).
+    const { teamIds, managerOf } = await this.loadPipAttributes(userId, t);
+
     const { UserRole, Role, RolePermission, Permission } = getIdentityContext();
     const userRoles = await UserRole.findAll({ where: { user_id: userId }, transaction: t });
-    if (userRoles.length === 0) return { roles: [], permissions: [], scope: 'own_only' };
+    if (userRoles.length === 0) {
+      return { roles: [], permissions: [], scope: 'own_only', teamIds, managerOf };
+    }
 
     const ur = userRoles[0].get({ plain: true }) as { role_id: string; scope: string };
     const role = await Role.findByPk(ur.role_id, { transaction: t });
@@ -108,7 +115,32 @@ export class UserRepository {
       : [];
     const permNames = perms.map((p) => (p.get({ plain: true }) as { name: string }).name);
 
-    return { roles: roleName ? [roleName] : [], permissions: permNames, scope: ur.scope };
+    return { roles: roleName ? [roleName] : [], permissions: permNames, scope: ur.scope, teamIds, managerOf };
+  }
+
+  /**
+   * The Policy Information Point (PIP): resolve the user's team memberships and management subtree.
+   * Runs inside the caller's RLS transaction, so both queries are tenant-scoped by Postgres — no
+   * cross-tenant leakage and no explicit tenant predicate needed. `teamIds` feeds `own_and_team`
+   * row scope; `managerOf` feeds the `manager_of` ABAC operator (the user ids this user manages).
+   */
+  private async loadPipAttributes(
+    userId: string,
+    t: Transaction,
+  ): Promise<{ teamIds: string[]; managerOf: string[] }> {
+    const sequelize = getSequelize();
+    const teamRows = await sequelize.query<{ team_id: string }>(
+      `SELECT DISTINCT team_id FROM team_members WHERE user_id = $1`,
+      { bind: [userId], type: QueryTypes.SELECT, transaction: t },
+    );
+    const managedRows = await sequelize.query<{ user_id: string }>(
+      `SELECT DISTINCT user_id FROM approval_hierarchy WHERE manager_id = $1`,
+      { bind: [userId], type: QueryTypes.SELECT, transaction: t },
+    );
+    return {
+      teamIds: teamRows.map((r) => r.team_id),
+      managerOf: managedRows.map((r) => r.user_id),
+    };
   }
 
   private toContact(row: UserManagementShape.UserRow): UserManagementShape.UserContactDto {

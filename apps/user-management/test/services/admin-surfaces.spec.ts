@@ -75,7 +75,12 @@ describe('user-management admin services', () => {
     const service = new PolicyService(repo as never);
 
     const result = await run(() =>
-      service.create({ permission: 'expense.report.approve', effect: 'allow', rule: { amount: { lte: 100 } } }),
+      service.create({
+        permission: 'expense.report.approve',
+        effect: 'allow',
+        // v1 envelope is {conditions} only (Phase 0 PAP hardening).
+        rule: { conditions: [{ attribute: 'resource.amount', operator: 'lte', value: 100 }] },
+      }),
     );
 
     expect(result).toMatchObject({ id: 'policy-1', permission: 'expense.report.approve', isActive: true });
