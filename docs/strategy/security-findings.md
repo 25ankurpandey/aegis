@@ -24,7 +24,12 @@
 >   at PAP write-time until a policy needs it.
 > - ⏳ **ABAC-01 / AGENT-04 (cap)** — the PIP seam is ready; the amount cap turns on the moment
 >   `approvalLimit` has a source (**awaiting the founder's Decision 1** below).
-> Remaining open: SCOPE-01/02/03 (per-service row-scope), AGENT-01/02/03/05/06, MEM-*, ABAC-04. See the
+> - 🟡 **SCOPE-01/02/03 (single-resource half FIXED T26)** — invoice `GET /invoices/:id`, pay-run
+>   `GET /pay-runs/:id`, and `GET /expenses/:id` now run a PEP resource loader → `checkRowScope`
+>   (own_only denies a non-owner; own_and_team allows same-team). The **LIST-route scope filters** for
+>   invoice/pay-run + the expense-list role→scope fix (ROWSCOPE-03) remain — they need `scope`/`teamIds`
+>   surfaced into `RequestContext` (next increment).
+> Remaining open: SCOPE-01/02 (list half), ROWSCOPE-03, AGENT-01/02/03/05/06, MEM-*, ABAC-04. See the
 > remediation table at the bottom for current priorities.
 
 ---

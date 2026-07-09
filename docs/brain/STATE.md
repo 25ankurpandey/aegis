@@ -126,8 +126,9 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     source**. Closes **SCOPE-04, SCOPE-05, ABAC-02**; unblocks the amount-cap (needs `approvalLimit` source
     — founder Decision 1). Live PIP test proves resolution + tenant isolation. Also fixed 2 pre-existing
     T25 PAP-validator test regressions.
-  - **Totals:** `nx test ai-core` = **154/154** (19 suites) · `nx test db` = **82/82** (11 suites, live) ·
-    `nx test access-control` = **116/116** (10 suites) · `nx test user-management` = **41/41**; strict clean.
+  - **Totals:** `nx test ai-core` = **154/154** · `nx test db` = **82/82** (11 suites, live) ·
+    `nx test access-control` = **116/116** · `nx test user-management` = **41/41** · `nx test invoice` =
+    **50/50** · `nx test payroll` = **84/84** · `nx test expense` = **79/79**; all apps typecheck; strict clean.
   - **(superseded) T25 totals:** `nx test db` = **79/79** (10 suites, live
     pgvector/RLS/Chargebee/policy-read-port) · `nx test access-control` = **114/114** (10 suites); strict
     `tsc --noEmit` clean; expense + user-management apps typecheck.
@@ -136,10 +137,12 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 - (nothing executing right now.)
 
 ## Next (recommended order) — post-T26 (security remediation continuing)
-1. **Per-service row-scope wiring** (security-findings P0) — add resource loaders + scope-derived list
-   filters to **invoice** (SCOPE-01), **pay-run** (SCOPE-02), **single-expense `GET /expenses/:id`** (SCOPE-03),
-   and the **expense LIST** (ROWSCOPE-03). Now unblocked (the `teamId` plumbing + PIP `teamIds` exist).
-   Consider a registry/lint check that flags an owned-resource route lacking a scope mechanism.
+1. **Per-service row-scope wiring** (security-findings P0) — **single-resource reads DONE (T26):** invoice
+   `GET /invoices/:id`, pay-run `GET /pay-runs/:id`, `GET /expenses/:id` now run a resource loader →
+   checkRowScope. **Remaining: LIST-route scope filters** for invoice (SCOPE-01) + pay-run (SCOPE-02) and
+   the **expense-list role→scope fix** (ROWSCOPE-03) — these need `scope`/`teamIds` surfaced into
+   `RequestContext` (PEP sets them). Then a registry/lint check flagging an owned-resource route with no
+   scope mechanism.
 2. **Agent-path hardening** (P1) — bind pending actions to `(tenantId,userId)` + confirmer-match + namespace
    the store key (AGENT-01/06); set `isAgent:true` on every agent gate context (AGENT-02); TOCTOU re-gate at
    confirm (AGENT-05).

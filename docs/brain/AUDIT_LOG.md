@@ -502,6 +502,13 @@
   this entry updated; the amount-cap (ABAC-01) explicitly waits on founder Decision 1 (`approvalLimit` source).
 - **Next:** per-service row-scope (SCOPE-01/02/03), agent-path hardening (AGENT-01/02/05/06), then the
   founder-gated cap + memory-scope decisions.
+- **T26 cont. (same session) — single-resource row-scope fences:** added a PEP resource loader to the
+  single-resource reads on all three services (invoice `GET /invoices/:id`, pay-run `GET /pay-runs/:id`,
+  `GET /expenses/:id`) so `checkRowScope` runs — closing the IDOR half of SCOPE-01/02/03 (own_only denies a
+  non-owner; own_and_team allows same-team via the T26 PIP `teamIds`). No service-core change needed (the
+  loaders read `req.principal`). Verified: invoice 50/50, payroll 84/84, expense 79/79, all typecheck.
+  Committed `cc385d2`. **Still to do:** the LIST-route scope filters (invoice/pay-run) + the expense-list
+  role→scope fix (ROWSCOPE-03), which DO need `scope`/`teamIds` surfaced into `RequestContext` (PEP sets them).
 
 ---
 
