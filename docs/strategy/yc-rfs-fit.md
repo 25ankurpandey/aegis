@@ -21,7 +21,9 @@
    (Software for Agents) is the moat; #14 (Sell to Huge Companies) is the TAM; #3/#5/#16/#7 are the
    expansion. "You built one thing that shows up in seven RFS windows" — not seven things.
 4. **The red-team verdict is blunt and correct: not yet fundable as framed** — no customer, no revenue,
-   no co-founder, and the agent-does-the-work layer is designed, not shipped. The *depth of this very
+   no co-founder. *(Update 2026-07-10, T32: the agent-does-the-work layer is now SHIPPED — governed tool
+   loop, supervised writes, memory, reconciliation, generative-UI renderer + interactive host — so this is
+   no longer "designed, not shipped"; the binding gap is now purely commercial: no customer/revenue.)* The *depth of this very
    analysis* signals the risk (over-building/over-thinking vs. selling). **The one change that beats
    every positioning tweak: put one real company's money through the governed core with the agent in
    the loop, and lead with that.**
@@ -45,7 +47,7 @@ Inference Chips for Agent Workflows. (Hardware/bio/defense/space — zero fit.)
 | 4 | **AI-Native Service Companies** | **2/5** | **Pivot option** | Great *back end* for an AI service firm — but YC wants you to *be* the firm and capture services revenue, not sell picks-and-shovels. |
 | 5 | **Company Brain** | **2/5** | **Adjacent (reliability half)** | "Executable skill files → reliable agent automation" = you own the reliable-*execution* half; the knowledge-*ingestion* half is unbuilt. |
 | 6 | **The AI Operating System for Companies** | **2/5** | **Adjacent (action half)** | This RFS is a *read/context* play (ingest Slack/Linear/GitHub, make the company queryable). Aegis is a *write/governed-action* play. You're the safe-action tier a context-OS eventually needs — not the context-OS. |
-| 7 | **Dynamic Software Interfaces** | **2/5** | **Roadmap flourish** | Governed generative UI is a real angle, but designed, not shipped. |
+| 7 | **Dynamic Software Interfaces** | **2/5** | **Roadmap flourish** | Governed generative UI is a real angle; the server-side renderer + interactive host now SHIPPED (T31/T32), still no rich client app. |
 
 > The instinct to claim #16 ("AI OS for companies") because it matches our tagline is a trap: the RFS
 > rewards *context ingestion breadth*, which we don't have. Our governance depth scores a 2 there. This

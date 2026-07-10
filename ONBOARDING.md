@@ -15,7 +15,7 @@
 > [`architectures/`](docs/brain/architectures/README.md) atlas. **Targeted docs first; audit log as
 > fallback.**
 >
-> **Last updated:** 2026-07-09 (T25) · **Owner:** Ankur Pandey (ankur.pandey@siterecon.ai), building this and
+> **Last updated:** 2026-07-10 (T32) · **Owner:** Ankur Pandey (ankur.pandey@siterecon.ai), building this and
 > a parallel AI-native project (Wayfinder). Built largely solo + AI agents (autonomous multi-pass).
 > **For current build state + test counts, see [`docs/brain/STATE.md`](docs/brain/STATE.md)** (this
 > narrative covers the vision; STATE is the always-current status).
@@ -84,9 +84,9 @@ This is the thread of what was asked and concluded, so you have the full arc:
    ideas at 2–3/5; **lead with SaaS Challengers**; honest red-team verdict = **not fundable as framed
    without a customer**. → [`docs/strategy/yc-rfs-fit.md`](docs/strategy/yc-rfs-fit.md)
 7. **"Make the whole platform AI-first from the root — AI in the core of every module (RBAC, ABAC,
-   payroll, expense, workflow, …) and every future one."** → Designing the **AI-Native Module Contract**,
+   payroll, expense, workflow, …) and every future one."** → the **AI-Native Module Contract**,
    grounded in Wayfinder. → [`docs/strategy/ai-native-core.md`](docs/strategy/ai-native-core.md)
-   *(being generated as of 2026-07-01; see §6)*.
+   *(designed AND shipped since T14 — the tool-registry generator + governed loop are live; see §4)*.
 
 ---
 
@@ -115,11 +115,26 @@ Read these in order for depth. They are cross-referenced and authoritative for t
   RequestContext, feature-flags), `shared` (enums/types/constants), `testing`.
 - One-command Docker run, Terraform IaC, live Swagger, browser log dashboard, seeded 2-tenant RLS demo.
 
-**What does NOT exist yet (critical to know):**
-- **No LLM/agent runtime in code.** "AI" appears only in docs/aspiration. No tool registry, no NL→tool
-  mapping, no orchestrator, no conversation state, no voice, no generative UI. The agentic + AI-native
-  design is *designed, not shipped*.
-- No module manifest / Entitlement Service yet (designed in the modular plan).
+**What EXISTS now (shipped since T14 — this section was written at T13 and is superseded; canonical =
+[`docs/brain/STATE.md`](docs/brain/STATE.md)):**
+- **The governed agentic layer is REAL and green** (read-only / propose / human-supervised): the
+  **tool-registry generator** (every guarded route → an authz-bound agent tool, zero wiring), the
+  **agent orchestrator** + **multi-LLM gateway** (Anthropic/OpenAI-compatible, priority/fallback), the
+  **danger/HITL layer** (deterministic ceremonies, enforced in the loop), the **independent verifier /
+  hardened Trust Rule**, the **supervised-write broker** + `/_ai/act` → `/_ai/act/:id/confirm` flow, an
+  **MCP stdio server** (Claude-Desktop-driveable), **conversation + agent memory** (the Wayfinder port,
+  per-user scoped), a **pgvector app-brain**, the **RECONCILIATION** capability (deterministic checks →
+  verified propose-only findings), and the **generative-UI renderer + interactive host** (visible AND
+  clickable in a browser, wired to the governed routes). Security audit: **all 16 of 16 findings
+  remediated + regression-gated**. ~870 tests across 9 projects, strict typechecks clean.
+- The **module manifest / Entitlement Service** now exists too (`tenant_modules` + Chargebee → entitlement
+  loop; live tool-surface gating behind `AEGIS_ENTITLEMENT_FILTER=on`).
+
+**What still does NOT exist (the real gaps):**
+- **Fully-autonomous (no-human) money/irreversible writes** — OFF by design (D19-gated); supervised writes
+  require human ceremony evidence.
+- **Live real-LLM demo** and **semantic embedding recall** — code is ready; both are founder-gated on keys
+  (`AEGIS_LLM_*` / an embedding-provider key). **Voice** and a rich **client/native UI** are net-new.
 - No customers, no revenue (per the YC red-team — this is the #1 gap to close).
 
 **The single highest-leverage existing seam:** `libs/service-core/src/bootstrap/pep-assertion.ts`

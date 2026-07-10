@@ -4,7 +4,7 @@
 > gets full context here with **zero re-explanation**: what we're building, every decision made, what
 > happened in every working session, where we are now, and what's next.
 >
-> **Last updated:** 2026-07-09 (T25) · Maintained by every agent that works on this repo (see Update Protocol).
+> **Last updated:** 2026-07-10 (T32) · Maintained by every agent that works on this repo (see Update Protocol).
 
 ---
 
@@ -34,19 +34,23 @@ audit log / the code. Never invent project history or decisions.
 
 - **Phase:** design COMPLETE; **BUILD well underway** on branch `feat/agentic-platform` (pushed to the
   founder's personal GitHub), on **real infra** (live pgvector Postgres + Redis).
-- **Built & green (through T25):** the full read-only/propose/human-supervised agentic layer — the
+- **Built & green (through T32):** the full read-only/propose/human-supervised agentic layer — the
   authz-bound tool-registry generator, per-principal filter, tool-server + MCP transport, orchestrator +
   **multi-LLM gateway**, the **danger/HITL layer** and **independent-verifier / hardened Trust Rule**
   (the D19 supervised-write milestone), the running propose→confirm broker, **conversation + agent
-  memory** (the Wayfinder port: supersede/soft-invalidation/tiered recall/mem0 extraction), the
-  **pgvector app-brain** (self-knowledge RAG, indexed online), the **module entitlement** loop
-  (`tenant_modules` + Chargebee ingestion), and **ABAC Phase 0/1** (persisted-policy mapper + ports +
-  DB loader). Totals: ai-core 154/154, db 75/75 (live), access-control 114/114; strict typechecks clean.
-- **Security audited (T25):** the RBAC/ABAC/scope/RLS/agent/memory fence was adversarially audited →
-  [`../strategy/security-model.md`](../strategy/security-model.md) +
+  memory** (the Wayfinder port: supersede/soft-invalidation/tiered recall/mem0 extraction, per-user
+  scoped), the **pgvector app-brain** (self-knowledge RAG, indexed online), the **module entitlement**
+  loop (`tenant_modules` + Chargebee ingestion), **ABAC Phase 0/1** (persisted-policy mapper + ports +
+  DB loader), the **RECONCILIATION** capability (deterministic checks → verified propose-only findings →
+  app-brain; runner + `--all` sweep + HTTP surface), and the **generative-UI renderer + interactive host**
+  (T31/T32 — the agent loop is visible AND clickable in a browser, wired to the governed `/_ai/act` flow).
+  Totals: ai-core 201/201, db 99/99 (live), access-control 126/126; ~870 across 9 projects; strict typechecks clean.
+- **Security audited + FULLY remediated (T25→T28):** the RBAC/ABAC/scope/RLS/agent/memory fence was
+  adversarially audited → [`../strategy/security-model.md`](../strategy/security-model.md) +
   [`../strategy/security-findings.md`](../strategy/security-findings.md). Tenant isolation is a hard,
-  live-verified guarantee; 16 within-tenant findings (root cause: the un-populated PIP) are documented
-  with a remediation plan awaiting founder sign-off on two decisions (amount-cap source, memory scope).
+  live-verified guarantee; **all 16 within-tenant findings are now remediated + regression-gated**
+  (`row-scope-gate.spec.ts`) — the user/team fence enforces off the signed scope claim, fail-closed; the
+  amount-cap enforces; memory is per-user isolated.
 - **Still GATED:** fully-autonomous (no-human) money writes per D19; products/AR/omniscience per D20;
   founder decisions in [`discussions/README.md`](discussions/README.md) (O1–O8).
 - **Known blocker:** session usage limits interrupt long workflows — resume via cached `resumeFromRunId`.

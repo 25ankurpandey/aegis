@@ -171,7 +171,7 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 ## In progress
 - (nothing executing right now.)
 
-## Next (recommended order) — post-T26 (security remediation continuing)
+## Next (recommended order) — post-T32 (security DONE; reconciliation + generative-UI renderer/host DONE)
 > **SECURITY REMEDIATION COMPLETE — ALL 16 of 16 findings closed, and the fence surface is
 > regression-gated** (`row-scope-gate.spec.ts` fails if a new owned-resource route ships unfenced). T26
 > did the row-scope slice + agent-path hardening; T27 closed the amount-cap + per-user memory + swept the
@@ -180,14 +180,15 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 > RECONCILIATION** (deterministic checks → verified findings → recallable app-brain proposals; live-tested).
 1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` +
    agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key → semantic app-brain recall.
-2. **Other net-new (buildable now):** more reconciliation checks (payroll tax, invoice AR vs ledger);
-   an interactive/client generative-UI surface (a real front-end app or wiring the renderer's data-action
-   buttons to the governed routes) + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+2. **Other net-new (buildable now):** serve the interactive generative-UI from a REAL route (render a
+   tool's input form via `renderUiPage(..., {interactive, hostConfig})`, injecting the caller's own session)
+   — the renderer (T31) + interactive host (T32) exist; the missing last mile is a route that serves an
+   interactive page; then a rich client/native front-end app + voice; more reconciliation checks (payroll
+   tax, invoice AR vs ledger); Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
    ABAC Phase 3+ (env/time conditions, obligations, retire hardcoded helpers); a real scheduler/worker for
    the `--all` reconciliation sweep (today it's a cron-able script).
-4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
-   against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
-5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);
+3. **Gated / later:** a **client/native** generative-UI renderer + **voice** (the web renderer + interactive
+   host are DONE, T31/T32); enterprise/compliance hardening. Money-writes GATED (D19);
    products/AR/omniscience GATED (D20).
 
 ## Gating open questions (need the founder — see discussions/README.md)

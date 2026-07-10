@@ -49,7 +49,7 @@ fully-designed **agentic-first, modular, governance-native platform**, with all 
 AND adversarially red-teamed. Since T14 we've been **building the agentic layer for real**, strictly inside
 the red-team's "safe first slice": everything is **read-only / propose-only** — the agent can discover and
 *call governed tools*, and *propose* dangerous actions, but **cannot autonomously write** to money/
-irreversible things. The whole governed loop works and is tested (**154/154 ai-core + 79/79 db + 114/114 access-control** as of T25), the **D19
+irreversible things. The whole governed loop works and is tested (**201/201 ai-core + 99/99 db + 126/126 access-control**, ~870 across 9 projects as of T32), the **D19
 safety gate is complete** (`executeSupervisedWrite` composes AUTHORIZATION × DANGER × VERIFIABILITY — a
 supervised write executes only when the ceremony is satisfied AND the independent verifier passes, and a
 test proves the unsafe path never reaches execution), and it is wrapped in a **running two-step
@@ -156,7 +156,7 @@ money/irreversible stay off by design** (the ceremony requires human evidence).
 - Plus (me): wired `deriveDangerFacts` to prefer a tool's explicit `riskTier`. **103/103 ai-core tests.**
 
 ### In flight right now
-- (nothing executing — T23 integrated, verified, committed, and pushed.)
+- (nothing executing — T32 integrated, verified, committed, and pushed.)
 
 ### What to do next (reprioritized by the T25 audit — see security-findings.md)
 - **P0 — ABAC Phase 2, THE PIP:** populate `principal.attributes` (`teamIds`/`approvalLimit`/`managerOf`) at
@@ -172,7 +172,8 @@ money/irreversible stay off by design** (the ceremony requires human evidence).
 - **Live end-to-end demo** with a real LLM gateway — *blocked on you*: drop `AEGIS_LLM_BASE_URL` +
   `AEGIS_LLM_API_KEY` (or `AEGIS_LLM_PROVIDERS` JSON) → the multi-LLM gateway lights up; then run the
   `/_ai/act` supervised flow against a live `expense`, or the MCP stdio server into Claude Desktop.
-- Decision-gated: voice, generative-UI *renderer* (web/Unity), omniscience, AR, products.
+- Done since this snapshot: the generative-UI **web renderer + interactive host** (T31/T32). Still
+  decision-gated: voice, a **client/native (Unity)** renderer, omniscience, AR, products.
 - Still gated: **no fully-autonomous (no-human) money writes** — supervised writes require the human ceremony by design.
 
 ### Decisions still needing you (from discussions/README.md)
@@ -238,8 +239,8 @@ Everything we've discussed/designed, and where it stands. Detail for each is in 
 |---|---|:--:|:--:|
 | Sell the governance substrate (not the apps) | ✅ | — | positioning (T1) |
 | Modular, **pay-per-module**, multi-industry | ✅ modular-platform-plan.md | ✗ | module manifest + Entitlement Service = the big net-new build |
-| **Agentic-first** (do everything by talking/typing) | ✅ agentic-platform-design.md | ◑ | tool loop + orchestrator built; voice/generative-UI/conversation-memory not |
-| **AI-native from the root** (every module) | ✅ ai-native-core.md | ◑ | tools auto-generate per route (the mechanism); manifest descriptions in flight |
+| **Agentic-first** (do everything by talking/typing) | ✅ agentic-platform-design.md | ◑ | tool loop + orchestrator + conversation/agent memory + generative-UI renderer/host built; voice not |
+| **AI-native from the root** (every module) | ✅ ai-native-core.md | ◑ | tools auto-generate per route (the mechanism); manifest descriptions built (T20) |
 | **No sales/support/CS + minimal ops** (NoOps/AIOps) | ✅ | ✗ | design only |
 | **Self-sustaining / auto-growing** | ✅ | ✅ | proven: a new guarded route becomes an agent tool with zero wiring |
 | Autonomous + **verifiable** AI capabilities | ✅ agentic-operations.md | ◑ | verifier built; broad autonomous capabilities not; nothing writes autonomously |
@@ -252,7 +253,9 @@ Everything we've discussed/designed, and where it stands. Detail for each is in 
 | **AR management ecosystem** (Wayfinder) | ✅ ecosystem-ar-protocol.md | ✗ | research; net-new = A2UI→Unity renderer |
 | **Agentify** legacy + **AI policing** products | ✅ agentify-and-policing.md | ✗ | GO/NO-GO gated (D20) — do not build without an LOI |
 | MCP transport | ✅ | ✅ | stdio server + in-process server both built |
-| Conversation/session memory, voice, generative UI | ✅ | ✗ | pipeline |
+| Conversation/session memory | ✅ | ✅ | `ConversationStore` + `runConversation`, per-user scoped (T21+) |
+| Generative UI (renderer + interactive host) | ✅ | ✅ | server-side XSS-safe renderer (T31) + interactive host wiring `data-*` → governed `/_ai/act` (T32) |
+| Voice | ✅ | ✗ | net-new (emporio pipeline + LiveKit/Realtime) |
 | Live real-LLM demo | ✅ (runner ready) | ◑ | offline works; live needs a gateway key/infra (blocked on founder) |
 
 Legend: ✅ done · ◑ partial · ✗ not yet.
