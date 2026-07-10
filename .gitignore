@@ -16,3 +16,4 @@ coverage
 !apps/**/.env
 .DS_Store
 scripts/ui/demo-ui.html
+scripts/ui/demo-ui.interactive.html

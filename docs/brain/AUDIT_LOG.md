@@ -681,4 +681,39 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T32.*
+## T32 — 2026-07-10 · Interactive generative-UI HOST (make the visible loop CLICKABLE, still UI-as-data)
+
+- **Ask:** "Continue" → took the recommended next item: wire the renderer's `data-*` references to the
+  governed routes, turning the visible UI into an interactive one (needs no LLM key).
+- **Done:**
+  - **Interactive HOST** (`libs/ai-core/src/ui/ui-host.ts`), in two layers so the wiring is testable
+    without a browser:
+    1. **Pure contract:** `actRequest(config, toolName, args)` and `confirmRequest(config, pendingId, evidence)`
+       build the exact `HttpRequestDescriptor`s for the two-step supervised flow (`POST /_ai/act` →
+       `POST /_ai/act/:id/confirm`) with bearer + `x-tenant-id` headers; `evidenceForAction(action, decision)`
+       maps an approval-card action + the SERVER-computed `DangerDecision.ceremony` to the right
+       `CeremonyEvidence` — `confirm`/`cooling_off`→`{confirmed}`, `typed_confirm`→`{typedConfirmation}`,
+       `step_up`→`{stepUp:{verified}}`, `second_approver`→`{approval:{status:'granted'}}`, `requiresOutOfBand`
+       adds the flag; a decline action (reject/cancel/deny/dismiss/decline) or a non-confirming ceremony
+       (allow/block) returns `null` so NOTHING executes.
+    2. **Browser bootstrap:** `AEGIS_UI_HOST_SCRIPT`, a self-contained vanilla-JS string (no framework) that
+       reads `window.__AEGIS_UI__ = {baseUrl, token, tenantId}`, wires `form[data-submit-tool]` submit →
+       `/_ai/act` (renders a ceremony card on `needs_ceremony`) and `button[data-action]` →
+       `/_ai/act/:id/confirm` with `evidenceFor(...)`.
+  - **`renderUiPage(components, {interactive, hostConfig?})`** now includes the bootstrap when `interactive`.
+    When `hostConfig` is given the SERVER emits `window.__AEGIS_UI__` itself (legit when rendering for an
+    ALREADY-authenticated caller — their own token in their own response, like a cookie), JSON-embedded via
+    a `</script>`-breakout-safe helper (`safeJsonScript`); otherwise the embedding page provides it. The
+    renderer/descriptor still never carries a token or a callable — the invariant holds.
+  - **Demo:** `scripts/ui/render-ui-demo.ts` now also writes `demo-ui.interactive.html` (gitignored) — the
+    same descriptors + the host, pre-wired to a placeholder session to swap for a real JWT/tenant.
+  - Barrel-exported `./ui/ui-host`.
+- **Verified:** ai-core **201/201** (+13: the request/evidence contract across every ceremony + decline +
+  requiresOutOfBand + the interactive/hostConfig page + the `</script>` breakout guard) · strict `tsc` clean.
+- **Next:** serve the interactive UI from a real route (render a tool's input form via
+  `renderUiPage(..., {interactive, hostConfig})` injecting the caller's session); voice; more reconciliation
+  checks; founder-gated live demo / semantic embeddings; Chargebee live; ABAC Phase 3+; real scheduler/worker.
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T33.*

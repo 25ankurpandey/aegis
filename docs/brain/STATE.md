@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-10 (session T31). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-10 (session T32). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -147,7 +147,20 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     preserves the invariant (every value escaped, NO inline JS, actions as `data-*` + labeled buttons only).
     Demo script writes an openable page; **`GET /_ai/reconcile/findings.html`** serves a tenant's live
     findings as HTML — the agent loop is now VISIBLE in a browser with no LLM key / front-end build.
-  - **Totals (T31):** `nx test ai-core` = **188/188** · `nx test db` = **99/99** (live) · `nx test
+  - **[T32] Interactive generative-UI HOST** (`libs/ai-core/src/ui/ui-host.ts`) — turns the *visible* UI
+    into a *clickable* one WITHOUT breaking the UI-as-data invariant. Two layers: (1) a pure/testable
+    contract — `actRequest`/`confirmRequest` build the exact HTTP descriptors for the two-step supervised
+    flow (`POST /_ai/act` → `POST /_ai/act/:id/confirm`), and `evidenceForAction` maps an approval-card
+    action + the SERVER-computed danger decision to the right `CeremonyEvidence` (or `null` to decline —
+    reject/cancel/deny/dismiss/decline never execute); (2) `AEGIS_UI_HOST_SCRIPT`, a self-contained
+    vanilla-JS browser bootstrap (no framework) that reads `window.__AEGIS_UI__ = {baseUrl,token,tenantId}`,
+    wires `form[data-submit-tool]` submit → `/_ai/act` (renders a ceremony card on `needs_ceremony`) and
+    `button[data-action]` → `/_ai/act/:id/confirm`. `renderUiPage(components, {interactive:true, hostConfig?})`
+    includes the bootstrap; when `hostConfig` is given the SERVER injects the AUTHENTICATED caller's own
+    session (their token, JSON-embedded via a `</script>`-breakout-safe helper — like a cookie), else the
+    embedding page sets `window.__AEGIS_UI__`. The renderer/descriptor still never carries a token or a
+    callable. Demo writes `demo-ui.interactive.html` alongside the static page. +13 tests.
+  - **Totals (T32):** `nx test ai-core` = **201/201** · `nx test db` = **99/99** (live) · `nx test
     access-control` = **126/126** · `nx test service-core` = **93/93** · `nx test user-management` =
     **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` =
     **79/79** · `nx test reporting` = **18/18**; all apps typecheck; strict `tsc` clean.

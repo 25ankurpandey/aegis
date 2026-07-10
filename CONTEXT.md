@@ -281,9 +281,9 @@ build if a capability lacks a description/tier. Full: [stack-sufficiency.md], [a
 ## 12. Current build state (what's REAL vs DESIGNED — be honest)
 
 **REAL, shipping today** (branch `feat/agentic-platform`, pushed to origin = personal GitHub
-`25ankurpandey/aegis`; all green at T31: **ai-core 188/188** + **db 99/99 (live
+`25ankurpandey/aegis`; all green at T32: **ai-core 201/201** + **db 99/99 (live
 pgvector/RLS/Chargebee/policy-read-port/PIP-cap/memory-owner)** + **access-control 126/126** + all 5
-business apps (expense/invoice/payroll/reporting/user-management) — ~820 tests across 9 projects; strict
+business apps (expense/invoice/payroll/reporting/user-management) — ~870 tests across 9 projects; strict
 typechecks clean. **Security audit: ALL 16 of 16 findings remediated + regression-gated** (see `docs/strategy/security-findings.md`).
 Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
 0036) + Redis @ 6380):**
@@ -394,8 +394,9 @@ Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
 (the broker + `/_ai/act` endpoint + UI-as-data all exist and typecheck, but running end-to-end needs the
 Docker stack + an LLM gateway key — blocked on the founder); the **module manifest + Entitlement Service**
 (the pay-per-module spine — DB + Chargebee, touches O1); the app/runtime **second brain** (pgvector,
-RLS-scoped) + self-knowledge RAG; the broad **autonomous capabilities**; the generative-UI **renderer**
-(web/Unity) and **voice**; and the **omniscience / AR / products** tracks. **No customers, no revenue
+RLS-scoped) + self-knowledge RAG; the broad **autonomous capabilities**; a **native/Unity** generative-UI
+renderer and **voice** (the web renderer + interactive host now EXIST — see below); and the **omniscience /
+AR / products** tracks. **No customers, no revenue
 yet.** **Fully-autonomous (no-human) money/irreversible writes remain OFF by design** — the supervised
 path requires human ceremony evidence; everything shipped is the **D18 read-only / propose /
 human-supervised** safe slice.

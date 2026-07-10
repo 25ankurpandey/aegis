@@ -6,6 +6,12 @@ import type {
   UiKeyValue,
   UiTable,
 } from './ui-spec';
+import { AEGIS_UI_HOST_SCRIPT, type UiHostConfig } from './ui-host';
+
+/** Embed a value as JSON inside a `<script>` safely (neutralize a `</script>` breakout in any string). */
+function safeJsonScript(value: unknown): string {
+  return JSON.stringify(value).replace(/<\//g, '<\\/');
+}
 
 /**
  * @aegis/ai-core / ui — a reference SERVER-SIDE HTML renderer for the generative UI-as-data descriptors.
@@ -143,16 +149,33 @@ const BASE_STYLE = `
   .approval-card .ceremony{color:#a33} .actions button,.form button{margin-right:.5rem;padding:.4rem .8rem}
 `;
 
-/** Wrap rendered components in a self-contained, openable HTML page (inline CSS; no external assets). */
+/**
+ * Wrap rendered components in a self-contained, openable HTML page (inline CSS; no external assets).
+ *
+ * When `opts.interactive` is set, the generative-UI HOST bootstrap ({@link AEGIS_UI_HOST_SCRIPT}) is
+ * included so `data-submit-tool` forms and `data-action` buttons drive the governed `/_ai/act` flow. The
+ * host reads its config from `window.__AEGIS_UI__ = { baseUrl, token, tenantId }`:
+ *   - Pass `opts.hostConfig` and the SERVER emits that config script itself — legitimate when the server
+ *     renders the page for an ALREADY-authenticated caller (their own token in their own response, like a
+ *     cookie). The token value is JSON-embedded through {@link safeJsonScript} so it cannot break out.
+ *   - Omit `opts.hostConfig` and the embedding page must set `window.__AEGIS_UI__` before the host runs.
+ *
+ * The descriptor/renderer never carries a token or a callable; the config is the caller's own session.
+ */
 export function renderUiPage(
   components: UiComponent | UiComponent[],
-  opts: { title?: string } = {},
+  opts: { title?: string; interactive?: boolean; hostConfig?: UiHostConfig } = {},
 ): string {
   const title = escapeHtml(opts.title ?? 'Aegis');
+  const configScript =
+    opts.interactive && opts.hostConfig
+      ? `<script>window.__AEGIS_UI__ = ${safeJsonScript(opts.hostConfig)};</script>`
+      : '';
+  const host = opts.interactive ? `${configScript}<script>${AEGIS_UI_HOST_SCRIPT}</script>` : '';
   return (
     `<!doctype html>\n<html lang="en"><head><meta charset="utf-8" />` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />` +
     `<title>${title}</title><style>${BASE_STYLE}</style></head>` +
-    `<body><main>${renderUiToHtml(components)}</main></body></html>`
+    `<body><main>${renderUiToHtml(components)}</main>${host}</body></html>`
   );
 }

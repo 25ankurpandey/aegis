@@ -10,10 +10,18 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-10 (end of session T31). On branch **`feat/agentic-platform`**, pushed to
+> **Last updated:** 2026-07-10 (end of session T32). On branch **`feat/agentic-platform`**, pushed to
 > origin = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
 > **Postgres @ 55432** (migrated through **0036**) + **Redis @ 6380**. (A Docker restart stops them:
 > `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`.)
+>
+> **What we did last (T31–T32) — the generative-UI arc: VISIBLE, then CLICKABLE.** T31 shipped the
+> pure XSS-safe server-side renderer (`render-html.ts`) so the agent loop is visible in a browser
+> (`GET /_ai/reconcile/findings.html`) with no LLM key / front-end build. T32 shipped the interactive
+> **host** (`ui-host.ts`): the rendered page's `data-submit-tool` forms and `data-action` buttons now
+> drive the governed two-step supervised flow (`/_ai/act` → `/_ai/act/:id/confirm`) via a self-contained
+> vanilla-JS bootstrap + a pure/testable request+evidence contract — and the UI-as-data invariant still
+> holds (the descriptor never carries a token or a callable). ai-core **201/201**; ~870 green across 9.
 >
 > **What we did last (T26–T28) — SECURITY FULLY HARDENED (16/16) + the first real autonomous capability.**
 > T28 closed the last finding (MEM-04: session key binds userId), finished the expense-list own_and_team
@@ -214,6 +222,9 @@ Everything below is committed code (branch `feat/agentic-platform`, pushed to or
 | **ABAC generalization — ANALYSIS (no code)** — feasibility + target arch + plan + risks/tests for a DB-backed generic policy loader (+ the PIP prerequisite) | `docs/strategy/abac-generalization.md` | ✅ T23 (analysis) |
 | **Agent memory (Wayfinder port)** — v2 brain store (supersede-by-subject, soft-invalidation, embedder tag, minScore, profile/salient; migration `0034`) + memory tools (danger-gated builtins) + `[MEMORY]` tiered context + mem0 post-turn extraction; design doc | `libs/db/src/brain/*`, `libs/ai-core/src/agent-memory/*`, `docs/brain/designs/agent-memory.md` | ✅ T24 |
 | **App-brain ONLINE** — `indexTools`/`indexAuditProposal` (registry + audit findings → recallable memories; live ranking test) | `libs/db/src/brain/indexers.ts` | ✅ T24 |
+| **Reconciliation capability** — 3 vetted RLS-scoped deterministic checks (report-total vs line items · unresolved duplicate invoices · orphaned expenses) → verified propose-only findings → app-brain; per-tenant runner + `--all` sweep + `POST /_ai/reconcile` + `GET /_ai/reconcile/findings` (guarded by `audit.view`) | `libs/db/src/reconciliation/*`, `libs/ai-core/src/autonomy/reconciliation.ts`, `scripts/reconciliation/*`, `apps/expense/.../reconciliation.controller.ts` | ✅ T29–T30 |
+| **Generative-UI renderer (server-side)** — pure XSS-safe `renderComponentToHtml`/`renderUiToHtml`/`renderUiPage` over the whole `UiComponent` union (escaped, no inline JS, actions as `data-*` + labels); `GET /_ai/reconcile/findings.html` serves live findings | `libs/ai-core/src/ui/render-html.ts` | ✅ T31 |
+| **Generative-UI interactive HOST** — pure contract (`actRequest`/`confirmRequest`/`evidenceForAction`, every ceremony + decline) + `AEGIS_UI_HOST_SCRIPT` vanilla-JS bootstrap wiring `data-submit-tool`/`data-action` → governed `/_ai/act` two-step flow; `renderUiPage({interactive, hostConfig})` (server injects the caller's own session, breakout-safe) | `libs/ai-core/src/ui/ui-host.ts` | ✅ T32 |
 | **Chargebee → entitlement loop** — webhook (Basic-auth, timing-safe) → pure mapper (paid-through-grace, at-least-once-safe) → `tenant_modules`; LIVE tool-surface gating behind `AEGIS_ENTITLEMENT_FILTER=on` | `libs/db/src/entitlement/chargebee-webhook.ts`, `apps/user-management/.../chargebee-webhook.controller.ts`, `apps/expense/.../ai-{tools,act}.controller.ts` | ✅ T24 |
 | **ABAC Phase 0 (dormant)** — PolicyRow→PolicyRule mapper (all-or-nothing, `$attr` validation, scope/wildcard-allow bans) + ports registry + PAP write-time hardening + audit script; NO authorize() change | `libs/access-control/src/policy-{row-mapper,ports}.ts`, `apps/user-management` PAP, `scripts/abac/audit-policies.ts` | ✅ T24 |
 
@@ -256,7 +267,7 @@ Legend: ✅ done · ◑ partial · ✗ not yet.
    dual-ledger). Large; needs DB; touches **O1** (ecosystem scope) — wants your decision + a focused build.
 3. The app/runtime **"second brain"** (per-tenant knowledge, pgvector, RLS-scoped) + self-knowledge RAG (needs DB).
 4. A first **autonomous capability** (self-audit / reconciliation) — propose-only, gated by verifier + human sample.
-5. **Generative-UI renderer** (web/Unity) — the UI-as-data layer is done (T21); the renderer consumes it. Plus **voice** (emporio pipeline + LiveKit/Realtime).
+5. **Generative-UI renderer + interactive host** — DONE: server-side HTML renderer (T31) + interactive host wiring `data-*` → governed `/_ai/act` (T32). Remaining net-new here: serve it from a real route (a tool's input form injecting the caller's session), a Unity/native renderer, and **voice** (emporio pipeline + LiveKit/Realtime).
 6. Enterprise/compliance + autonomous-ops hardening (SOC2 track, GitOps/AIOps).
 7. **Gated behind decisions:** omniscience layer, AR ecosystem, Agentify/Policing products.
 
