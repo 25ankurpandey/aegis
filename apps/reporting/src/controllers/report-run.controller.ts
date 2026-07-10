@@ -4,9 +4,12 @@ import { controller, httpDelete, httpGet, httpPatch, httpPost } from 'inversify-
 import { routeParam, validate } from '@aegis/service-core';
 import { Permission } from '@aegis/shared-enums';
 import { ApiConstants } from '@aegis/shared-constants';
-import { ReportingShape } from '@aegis/shared-types';
+import { ReportingShape, type AccessShape } from '@aegis/shared-types';
 import { authenticate, authorize } from '@aegis/access-control';
+import { withTenantTransaction } from '@aegis/db';
 import { ReportingService } from '../services/reporting.service';
+import { ReportRunRepository } from '../repositories/report-run.repository';
+import { ReportScheduleRepository } from '../repositories/report-schedule.repository';
 import {
   createRunSchema,
   createScheduleSchema,
@@ -46,7 +49,7 @@ export class ReportRunController {
   @httpGet(
     '/report-runs/:id',
     authenticate(),
-    authorize(Permission.ReportView),
+    authorize(Permission.ReportView, { resource: (req) => loadRunResource(req) }),
     validate(idParamSchema, 'params'),
   )
   async getRun(req: Request, res: Response): Promise<void> {
@@ -56,7 +59,7 @@ export class ReportRunController {
   @httpGet(
     '/report-runs/:id/export',
     authenticate(),
-    authorize(Permission.ReportView),
+    authorize(Permission.ReportView, { resource: (req) => loadRunResource(req) }),
     validate(idParamSchema, 'params'),
   )
   async getRunExport(req: Request, res: Response): Promise<void> {
@@ -88,7 +91,7 @@ export class ReportRunController {
   @httpPatch(
     '/report-schedules/:id',
     authenticate(),
-    authorize(Permission.ReportDefine),
+    authorize(Permission.ReportDefine, { resource: (req) => loadScheduleResource(req) }),
     validate(idParamSchema, 'params'),
     validate(updateScheduleSchema),
   )
@@ -99,10 +102,30 @@ export class ReportRunController {
   @httpDelete(
     '/report-schedules/:id',
     authenticate(),
-    authorize(Permission.ReportDefine),
+    authorize(Permission.ReportDefine, { resource: (req) => loadScheduleResource(req) }),
     validate(idParamSchema, 'params'),
   )
   async deleteSchedule(req: Request, res: Response): Promise<void> {
     res.status(200).json({ data: await this.reporting.deleteSchedule(routeParam(req, 'id')) });
   }
+}
+
+/**
+ * Row-scope loaders (closing the T27 audit gaps on reporting). A report run is owned by its
+ * `requested_by`; a schedule by its `created_by`. checkRowScope then denies an own_only principal a
+ * peer's run/schedule (and own_and_team fail-closes to owner-only here — no team column). An
+ * RLS-invisible id yields an undefined owner → the standard 404.
+ */
+async function loadRunResource(req: Request): Promise<AccessShape.ResourceRef> {
+  const id = routeParam(req, 'id');
+  const repo = new ReportRunRepository();
+  const run = await withTenantTransaction((t) => repo.findById(id, t));
+  return { type: 'report_run', id, ownerId: run?.requested_by ?? undefined };
+}
+
+async function loadScheduleResource(req: Request): Promise<AccessShape.ResourceRef> {
+  const id = routeParam(req, 'id');
+  const repo = new ReportScheduleRepository();
+  const schedule = await withTenantTransaction((t) => repo.findById(id, t));
+  return { type: 'report_schedule', id, ownerId: schedule?.created_by ?? undefined };
 }
