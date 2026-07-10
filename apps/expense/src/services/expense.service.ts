@@ -334,12 +334,15 @@ export class ExpenseService {
   }
 
   async listReports(input: ExpenseShape.ListReportsInput): Promise<ExpenseShape.ListReportsResult> {
+    // Row-scope the collection by the principal's SIGNED scope claim (ROWSCOPE-03, list half): own →
+    // only reports they submitted; own_and_team → + their teams'; all → unrestricted (RLS bounds it).
+    const rowScope = rowScopeListFilter();
     return withTenantTransaction(async (t) => {
       const offset = (input.page - 1) * input.pageSize;
-      const submitterId = this.rowScopeSubmitterFilter();
       const { rows, total } = await this.reports.listReports(
-        { ...input, submitterId, limit: input.pageSize, offset },
+        { ...input, limit: input.pageSize, offset },
         t,
+        rowScope,
       );
       return {
         data: rows.map((r) => this.toReportDto(r)),
@@ -1003,16 +1006,6 @@ export class ExpenseService {
       ExpenseReportTransitions.MANAGER,
       ExpenseReportTransitions.FINANCE,
     ].some((map) => (map[from] ?? []).includes(to));
-  }
-
-  /**
-   * Row-scope for the report LIST, derived from the SIGNED scope claim — not role names (ROWSCOPE-03:
-   * an own-scoped Manager/Approver must NOT see every report). `all` → no submitter restriction;
-   * `own`/`own_and_team` → restrict to the caller. (own_and_team teammates in the list is a documented
-   * follow-up — safe/fail-closed; the single-report route already enforces team via checkRowScope.)
-   */
-  private rowScopeSubmitterFilter(): string | undefined {
-    return rowScopeListFilter().scope === 'all' ? undefined : this.requireUser();
   }
 
   private isAdmin(): boolean {

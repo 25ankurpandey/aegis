@@ -90,7 +90,7 @@ describe('RedisConversationStore (live Redis)', () => {
   it('round-trips append/history and tail-limits', async () => {
     if (!reachable) return;
     const store = new RedisConversationStore({ redis, keyPrefix: PREFIX });
-    const key = sessionKey(TENANT_A, 'sess-conv-1');
+    const key = sessionKey(TENANT_A, 'u1', 'sess-conv-1');
 
     const turns: ConversationTurn[] = [
       { role: 'user', content: 'hello', at: 1 },
@@ -109,7 +109,7 @@ describe('RedisConversationStore (live Redis)', () => {
   it('LTRIMs to maxTurns so the record stays bounded', async () => {
     if (!reachable) return;
     const store = new RedisConversationStore({ redis, keyPrefix: PREFIX, maxTurns: 3 });
-    const key = sessionKey(TENANT_A, 'sess-conv-bounded');
+    const key = sessionKey(TENANT_A, 'u1', 'sess-conv-bounded');
     for (let i = 0; i < 10; i++) {
       await store.append(key, { role: 'user', content: `msg-${i}` });
     }
@@ -121,8 +121,8 @@ describe('RedisConversationStore (live Redis)', () => {
   it('isolates two different keys and clear() empties only its key', async () => {
     if (!reachable) return;
     const store = new RedisConversationStore({ redis, keyPrefix: PREFIX });
-    const keyA = sessionKey(TENANT_A, 'shared-session-id');
-    const keyB = sessionKey(TENANT_B, 'shared-session-id');
+    const keyA = sessionKey(TENANT_A, 'u1', 'shared-session-id');
+    const keyB = sessionKey(TENANT_B, 'u1', 'shared-session-id');
 
     await store.append(keyA, { role: 'user', content: 'tenant A secret' });
     await store.append(keyB, { role: 'user', content: 'tenant B secret' });
@@ -139,7 +139,7 @@ describe('RedisConversationStore (live Redis)', () => {
   it('expires a session when a short TTL is set', async () => {
     if (!reachable) return;
     const store = new RedisConversationStore({ redis, keyPrefix: PREFIX, ttlSeconds: 1 });
-    const key = sessionKey(TENANT_A, 'sess-conv-ttl');
+    const key = sessionKey(TENANT_A, 'u1', 'sess-conv-ttl');
     await store.append(key, { role: 'user', content: 'ephemeral' });
     expect(await store.history(key)).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 1500));
@@ -188,7 +188,7 @@ describe('makeRedisStores factory (live Redis)', () => {
     if (!reachable) return;
     const stores = makeRedisStores(REDIS_URL, { keyPrefix: PREFIX });
     try {
-      const key = sessionKey(TENANT_A, 'factory-session');
+      const key = sessionKey(TENANT_A, 'u1', 'factory-session');
       await stores.conversationStore.append(key, { role: 'user', content: 'via factory' });
       expect(await stores.conversationStore.history(key)).toEqual([
         { role: 'user', content: 'via factory' },

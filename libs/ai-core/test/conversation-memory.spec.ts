@@ -27,6 +27,8 @@ import {
  */
 const TENANT = '00000000-0000-4000-8000-000000000001';
 const TENANT_B = '00000000-0000-4000-8000-000000000002';
+const USER = '00000000-0000-4000-8000-0000000000u1';
+const USER_B = '00000000-0000-4000-8000-0000000000u2';
 const SECRET = 'test-secret';
 
 const expenseIdParamSchema = Joi.object({ id: Joi.string().uuid().required() });
@@ -100,12 +102,14 @@ describe('conversation/session memory (runConversation wraps runAgentTurn)', () 
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's1',
       turnParams: { app, llm, invoke: invoke(), principal, userMessage: 'hi' },
     });
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's1',
       turnParams: { app, llm, invoke: invoke(), principal, userMessage: 'again' },
     });
@@ -128,12 +132,14 @@ describe('conversation/session memory (runConversation wraps runAgentTurn)', () 
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's2',
       turnParams: { app, llm, invoke: invoke(), principal, userMessage: 'talk' },
     });
     const toolTurn = await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's2',
       turnParams: { app, llm, invoke: invoke(), principal, userMessage: 'read it' },
     });
@@ -142,7 +148,7 @@ describe('conversation/session memory (runConversation wraps runAgentTurn)', () 
     expect(toolTurn.kind).toBe('tool');
     if (toolTurn.kind === 'tool') expect(toolTurn.result.status).toBe(200);
 
-    const hist = store.history(sessionKey(TENANT, 's2'));
+    const hist = store.history(sessionKey(TENANT, USER, 's2'));
     expect(hist).toHaveLength(4);
     expect(hist.map((t) => t.role)).toEqual(['user', 'assistant', 'user', 'tool']);
     expect(hist[0].content).toBe('talk');
@@ -157,24 +163,27 @@ describe('conversation/session memory (runConversation wraps runAgentTurn)', () 
     const llmA = new ScriptedLlm([{ assistantMessage: 'A1' }, { assistantMessage: 'A2' }]);
     const llmOther = new ScriptedLlm([{ assistantMessage: 'X' }]);
 
-    // Session s-a in TENANT builds up two turns of history.
+    // Session s-a in TENANT (user USER) builds up two turns of history.
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's-a',
       turnParams: { app, llm: llmA, invoke: invoke(), principal, userMessage: 'a-hi' },
     });
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's-a',
       turnParams: { app, llm: llmA, invoke: invoke(), principal, userMessage: 'a-again' },
     });
 
-    // A DIFFERENT session id in the same tenant sees empty history.
+    // A DIFFERENT session id in the same tenant/user sees empty history.
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's-b',
       turnParams: { app, llm: llmOther, invoke: invoke(), principal, userMessage: 'b-hi' },
     });
@@ -185,15 +194,66 @@ describe('conversation/session memory (runConversation wraps runAgentTurn)', () 
     await runConversation({
       store,
       tenantId: TENANT_B,
+      userId: USER,
       sessionId: 's-a',
       turnParams: { app, llm: llmTenantB, invoke: invoke(), principal, userMessage: 'other-tenant' },
     });
     expect(llmTenantB.seenHistories[0]).toEqual([]);
 
     // The two isolated sessions/tenants left their own keys untouched by s-a.
-    expect(store.history(sessionKey(TENANT, 's-a'))).toHaveLength(4);
-    expect(store.history(sessionKey(TENANT, 's-b'))).toHaveLength(2);
-    expect(store.history(sessionKey(TENANT_B, 's-a'))).toHaveLength(2);
+    expect(store.history(sessionKey(TENANT, USER, 's-a'))).toHaveLength(4);
+    expect(store.history(sessionKey(TENANT, USER, 's-b'))).toHaveLength(2);
+    expect(store.history(sessionKey(TENANT_B, USER, 's-a'))).toHaveLength(2);
+  });
+
+  it('MEM-04: two DIFFERENT users with the SAME (tenantId, sessionId) do NOT see each other\'s history', async () => {
+    const store = new InMemoryConversationStore();
+    const llmA = new ScriptedLlm([{ assistantMessage: 'A-secret' }, { assistantMessage: 'A-more' }]);
+    const llmB = new ScriptedLlm([{ assistantMessage: 'B-secret' }]);
+
+    // User A holds a two-turn conversation on the SHARED session id.
+    await runConversation({
+      store,
+      tenantId: TENANT,
+      userId: USER,
+      sessionId: 'shared-session',
+      turnParams: { app, llm: llmA, invoke: invoke(), principal, userMessage: 'A-hi' },
+    });
+    await runConversation({
+      store,
+      tenantId: TENANT,
+      userId: USER,
+      sessionId: 'shared-session',
+      turnParams: { app, llm: llmA, invoke: invoke(), principal, userMessage: 'A-again' },
+    });
+
+    // User B, SAME tenant, SAME sessionId, must start from an EMPTY history — no leak of A's transcript.
+    await runConversation({
+      store,
+      tenantId: TENANT,
+      userId: USER_B,
+      sessionId: 'shared-session',
+      turnParams: { app, llm: llmB, invoke: invoke(), principal, userMessage: 'B-hi' },
+    });
+    expect(llmB.seenHistories[0]).toEqual([]);
+
+    // The two users resolve to DIFFERENT keys and keep DISJOINT records.
+    const keyA = sessionKey(TENANT, USER, 'shared-session');
+    const keyB = sessionKey(TENANT, USER_B, 'shared-session');
+    expect(keyA).not.toEqual(keyB);
+    const histA = store.history(keyA);
+    const histB = store.history(keyB);
+    expect(histA).toHaveLength(4);
+    expect(histB).toHaveLength(2);
+    // Neither user's record contains the other's content.
+    expect(histA.map((t) => t.content)).not.toContain('B-hi');
+    expect(histA.map((t) => t.content)).not.toContain('B-secret');
+    expect(histB.map((t) => t.content)).not.toContain('A-hi');
+    expect(histB.map((t) => t.content)).not.toContain('A-secret');
+  });
+
+  it('MEM-04: sessionKey rejects a blank userId (user-less callers must pass a sentinel)', () => {
+    expect(() => sessionKey(TENANT, '', 's-x')).toThrow(/userId is required/);
   });
 
   it('clear() empties a session', async () => {
@@ -202,10 +262,11 @@ describe('conversation/session memory (runConversation wraps runAgentTurn)', () 
     await runConversation({
       store,
       tenantId: TENANT,
+      userId: USER,
       sessionId: 's-clear',
       turnParams: { app, llm, invoke: invoke(), principal, userMessage: 'hi' },
     });
-    const key = sessionKey(TENANT, 's-clear');
+    const key = sessionKey(TENANT, USER, 's-clear');
     expect(store.history(key).length).toBeGreaterThan(0);
     store.clear(key);
     expect(store.history(key)).toEqual([]);

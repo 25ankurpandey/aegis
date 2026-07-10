@@ -1,12 +1,12 @@
 /**
  * CONVERSATION / SESSION MEMORY: the store that gives the orchestrator a memory across turns.
  *
- * ISOLATION-IN-THE-KEY: a store is a flat namespace keyed by string. Tenant/session isolation is NOT a
- * concern of the store implementation — it lives in the KEY the caller hands us (see {@link sessionKey}).
+ * ISOLATION-IN-THE-KEY: a store is a flat namespace keyed by string. Tenant/user/session isolation is NOT
+ * a concern of the store implementation — it lives in the KEY the caller hands us (see {@link sessionKey}).
  * A store never inspects, parses, or trusts the key's structure; it only ever returns what was appended
  * under the exact same key. This keeps "the agent reasons; the governed core acts" honest: the store is a
- * dumb, side-effect-contained record, and cross-tenant leakage is impossible by construction as long as
- * callers derive keys through {@link sessionKey}.
+ * dumb, side-effect-contained record, and cross-tenant AND cross-user leakage is impossible by construction
+ * as long as callers derive keys through {@link sessionKey}.
  */
 
 /** One recorded turn in a conversation. `at` is an optional wall-clock timestamp (ms since epoch). */
@@ -19,7 +19,7 @@ export interface ConversationTurn {
 /**
  * A pluggable conversation record. Implementations may be sync or async (in-memory today; a Redis- or
  * Postgres-backed store tomorrow behind the same interface). All methods are keyed — the caller owns
- * isolation via the key (see {@link sessionKey}).
+ * tenant/user/session isolation via the key (see {@link sessionKey}).
  */
 export interface ConversationStore {
   /** Append one turn to the record under `key`. */
@@ -31,12 +31,25 @@ export interface ConversationStore {
 }
 
 /**
- * Derive the storage key for a session. Isolation lives HERE, not in app logic: two different tenants (or
- * two different sessions within a tenant) produce different keys and therefore never share a record. Keep
- * all callers routing through this helper — never hand a raw sessionId to a {@link ConversationStore}.
+ * Derive the storage key for a session. Isolation lives HERE, not in app logic: two different tenants, two
+ * different USERS within a tenant, or two different sessions within a (tenant, user) all produce different
+ * keys and therefore never share a record. Keep all callers routing through this helper — never hand a raw
+ * sessionId to a {@link ConversationStore}.
+ *
+ * SECURITY (MEM-04): `userId` is REQUIRED and binds the transcript to a single principal. Without it, a
+ * future HTTP surface that trusts a client-supplied `sessionId` could hand back another same-tenant user's
+ * transcript — two users who happen to pick the same `sessionId` in the same tenant would collide on one
+ * key. A caller acting with no end user (a service account, a system job) MUST pass an explicit sentinel —
+ * e.g. the service-account id — never a blank string; an empty `userId` reopens the very collision this
+ * binding closes and is rejected here.
  */
-export function sessionKey(tenantId: string, sessionId: string): string {
-  return `${tenantId}:${sessionId}`;
+export function sessionKey(tenantId: string, userId: string, sessionId: string): string {
+  if (!userId) {
+    throw new Error(
+      'sessionKey: userId is required and must be non-empty (pass a service-account sentinel for user-less callers)',
+    );
+  }
+  return `${tenantId}:${userId}:${sessionId}`;
 }
 
 /**

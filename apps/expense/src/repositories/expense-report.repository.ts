@@ -1,5 +1,6 @@
-import type { Transaction } from 'sequelize';
+import { Op, type Transaction } from 'sequelize';
 import { ErrUtils } from '@aegis/service-core';
+import { type RowScopeListFilter } from '@aegis/access-control';
 import { ApprovalRecordType, TableName } from '@aegis/shared-enums';
 import { ExpenseShape } from '@aegis/shared-types';
 import { withRecordAnnotationListFilters } from '@aegis/db';
@@ -41,17 +42,22 @@ export class ExpenseReportRepository {
   async listReports(
     opts: ExpenseShape.ListReportsOptions,
     t: Transaction,
+    rowScope?: RowScopeListFilter,
   ): Promise<{ rows: ExpenseShape.ExpenseReportRow[]; total: number }> {
     const { ExpenseReport } = getExpenseContext();
-    const filter = withRecordAnnotationListFilters(
-      opts.submitterId ? { submitter_id: opts.submitterId } : {},
-      opts,
-      {
-        tableName: TableName.ExpenseReports,
-        recordType: ApprovalRecordType.ExpenseReport,
-        sequelize: getExpenseContext().sequelize,
-      },
-    );
+    const filter = withRecordAnnotationListFilters({}, opts, {
+      tableName: TableName.ExpenseReports,
+      recordType: ApprovalRecordType.ExpenseReport,
+      sequelize: getExpenseContext().sequelize,
+    }) as Record<string | symbol, unknown>;
+    // Row-scope (own_and_team fence, list half): own → submitted by me; own_and_team → + my teams;
+    // all (or absent) → no restriction. Fail-closed (no userId ⇒ match nothing). ANDed so it never
+    // clobbers the status/annotation filters above.
+    const scopePredicate = expenseReportScopePredicate(rowScope);
+    if (scopePredicate) {
+      const existingAnd = Array.isArray(filter[Op.and]) ? (filter[Op.and] as unknown[]) : [];
+      filter[Op.and] = [...existingAnd, scopePredicate];
+    }
     const { rows, count } = await ExpenseReport.findAndCountAll({
       where: filter,
       order: [['report_number', 'DESC']],
@@ -206,4 +212,25 @@ export class ExpenseReportRepository {
     });
     return rows.map((r) => r.get({ plain: true }) as ExpenseShape.ExpenseActivityRow);
   }
+}
+
+/**
+ * Build the Sequelize row-scope predicate for the expense-report list from a {@link RowScopeListFilter}.
+ * `all` (or absent) → undefined (no restriction). `own`/`own_and_team` → an OR of the submitter column
+ * (`submitter_id`) plus, for teams, `team_id ∈ teamIds`. Fail-closed: a scoped filter with no `userId`
+ * matches nothing (`id IS NULL`), so a malformed principal never sees rows. Mirrors the invoice/pay-run
+ * pattern (owner OR team_id IN teamIds).
+ */
+function expenseReportScopePredicate(
+  rowScope?: RowScopeListFilter,
+): Record<symbol, unknown> | undefined {
+  if (!rowScope || rowScope.scope === 'all') return undefined;
+  const or: Record<string, unknown>[] = [];
+  if (rowScope.userId) {
+    or.push({ submitter_id: rowScope.userId });
+  }
+  if (rowScope.scope === 'own_and_team' && rowScope.teamIds.length > 0) {
+    or.push({ team_id: { [Op.in]: rowScope.teamIds } });
+  }
+  return { [Op.or]: or.length > 0 ? or : [{ id: null }] };
 }

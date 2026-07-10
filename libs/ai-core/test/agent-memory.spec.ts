@@ -587,6 +587,7 @@ describe('orchestrator integration (builtins through the danger gate)', () => {
     const result = await runConversation({
       store: new InMemoryConversationStore(),
       tenantId: TENANT,
+      userId: 'u1',
       sessionId: 's-mem',
       turnParams: { app, llm, invoke: invoke(), principal, userMessage: 'hi' },
       agentMemory: { store: memory },
@@ -605,6 +606,7 @@ describe('orchestrator integration (builtins through the danger gate)', () => {
     await runConversation({
       store: new InMemoryConversationStore(),
       tenantId: TENANT,
+      userId: 'u1',
       sessionId: 's-mem2',
       turnParams: { app, llm: llm2, invoke: invoke(), principal, userMessage: 'hi' },
       agentMemory: { store: memory, injectContext: false },

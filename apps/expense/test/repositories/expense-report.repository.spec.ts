@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import type { Transaction } from 'sequelize';
+import { Op, type Transaction } from 'sequelize';
+import type { RowScopeListFilter } from '@aegis/access-control';
 
 // Stub the model context so the repository runs against in-memory fakes (no real DB / connection).
 const Expense = {
@@ -8,12 +9,16 @@ const Expense = {
 };
 const ExpenseReport = {
   findByPk: jest.fn(),
+  findAndCountAll: jest.fn(),
 };
 const ExpenseApproval = { findAll: jest.fn() };
 const ExpenseComment = { findAll: jest.fn() };
 const ExpenseActivity = { findAll: jest.fn() };
+// A stub Sequelize is needed by withRecordAnnotationListFilters' tag-predicate escaping (unused when
+// no tag filters are supplied, but the config object requires it).
+const sequelize = { escape: (v: string) => `'${v}'` };
 jest.mock('../../src/models/database-context', () => ({
-  getExpenseContext: () => ({ Expense, ExpenseReport, ExpenseApproval, ExpenseComment, ExpenseActivity }),
+  getExpenseContext: () => ({ Expense, ExpenseReport, ExpenseApproval, ExpenseComment, ExpenseActivity, sequelize }),
 }));
 
 import { ExpenseReportRepository } from '../../src/repositories/expense-report.repository';

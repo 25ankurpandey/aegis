@@ -9,8 +9,10 @@ import { buildMemoryContext } from '../agent-memory/memory-context';
  * it is). Instead it (1) loads prior history for the session key, (2) threads it into the turn as
  * `history`, and (3) records the user message + a compact record of the outcome back into the store.
  *
- * Isolation lives in the key ({@link sessionKey}), never in this logic — two sessions/tenants using this
- * wrapper cannot see each other's history because they resolve to different keys.
+ * Isolation lives in the key ({@link sessionKey}), never in this logic — two sessions, two users, or two
+ * tenants using this wrapper cannot see each other's history because they resolve to different keys. In
+ * particular (MEM-04) two DIFFERENT users who share the same `(tenantId, sessionId)` still get different
+ * keys because `userId` is folded into the key, so one user can never read another's transcript.
  *
  * LONG-TERM AGENT MEMORY (optional, additive): pass {@link RunConversationParams.agentMemory} to give
  * the turn Wayfinder-style tiered memory on top of the raw transcript — the Tier-0/Tier-1
@@ -32,6 +34,12 @@ export interface AgentMemoryOptions {
 export interface RunConversationParams {
   store: ConversationStore;
   tenantId: string;
+  /**
+   * The principal the transcript is bound to (MEM-04). REQUIRED — folded into the session key so two
+   * users sharing a `(tenantId, sessionId)` never collide. A user-less caller (service account, system
+   * job) must pass an explicit sentinel id here, never a blank string.
+   */
+  userId: string;
   sessionId: string;
   /** The {@link RunAgentTurnParams} minus `history` — history is supplied by the store. */
   turnParams: Omit<RunAgentTurnParams, 'history'>;
@@ -66,8 +74,8 @@ function outcomeTurn(result: AegisTurnResult, at: number): ConversationTurn {
  * appends the user message and a compact outcome record. Returns the {@link AegisTurnResult} unchanged.
  */
 export async function runConversation(params: RunConversationParams): Promise<AegisTurnResult> {
-  const { store, tenantId, sessionId, turnParams, agentMemory } = params;
-  const key = sessionKey(tenantId, sessionId);
+  const { store, tenantId, userId, sessionId, turnParams, agentMemory } = params;
+  const key = sessionKey(tenantId, userId, sessionId);
 
   const prior = await store.history(key);
   let history = prior.map((t) => ({ role: t.role, content: t.content }));
