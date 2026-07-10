@@ -14,7 +14,9 @@ import {
   runReconciliation,
   buildReconciliationChecks,
   appBrainProposalSink,
+  renderUiPage,
   type ReconciliationDataPort,
+  type UiComponent,
 } from '@aegis/ai-core';
 
 /**
@@ -84,5 +86,40 @@ export class ReconciliationController {
         createdAt: r.createdAt,
       })),
     });
+  }
+
+  /**
+   * GET /_ai/reconcile/findings.html — the same findings rendered as an openable HTML review page via
+   * the generative-UI renderer (UI-as-data → HTML). Makes the capability visible in a browser with no
+   * front-end build. Read-only; the rendered page carries no callable (host wires any action).
+   */
+  @httpGet('/reconcile/findings.html', authenticate(), authorize(Permission.AuditView))
+  async findingsHtml(req: Request, res: Response): Promise<void> {
+    const tenantId = req.principal?.tenantId ?? RequestContext.tenantId();
+    const service = new AppBrainService({ tenantId });
+    const rows = await service.listByKind('audit_finding', 100);
+    const components: UiComponent[] = [
+      {
+        type: 'alert',
+        tone: rows.length > 0 ? 'warning' : 'success',
+        text:
+          rows.length > 0
+            ? `${rows.length} reconciliation finding(s) awaiting review.`
+            : 'No open reconciliation findings — the books reconcile.',
+      },
+      {
+        type: 'table',
+        columns: ['Check', 'Subject', 'Finding'],
+        rows: rows.map((r) => [
+          (r.ref ?? '').split(':')[0] ?? '',
+          r.subject ?? '',
+          r.content ?? r.title ?? '',
+        ]),
+      },
+    ];
+    res
+      .status(200)
+      .type('html')
+      .send(renderUiPage(components, { title: 'Aegis — Reconciliation findings' }));
   }
 }
