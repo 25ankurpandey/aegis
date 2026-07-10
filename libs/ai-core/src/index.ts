@@ -36,6 +36,7 @@ export * from './memory/conversation-store';
 export * from './memory/run-conversation';
 export * from './ui/ui-spec';
 export * from './ui/render-turn';
+export * from './ui/render-html';
 export * from './llm/provider-types';
 export * from './llm/anthropic-client';
 export * from './llm/llm-gateway';
