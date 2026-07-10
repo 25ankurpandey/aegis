@@ -49,10 +49,14 @@
 >   clean. Workflow `rules` `:id` routes are **classified as tenant-shared automation config** (like
 >   connectors) — a deliberate not-a-gap decision, not owner-scoped.
 >
-> **Remaining open: MEM-04 only** — conversation-history isolation relies on a caller-supplied `sessionId`
-> with no user binding. **Latent, not currently exploitable** (no HTTP surface trusts a client sessionId
-> today); the fix is to fold `userId` into the session key when such a surface ships. Plus one fail-closed
-> follow-up: own_and_team teammates in the *expense list* (safe today). **15 of 16 findings closed.**
+> - ✅ **MEM-04 (FIXED T28)** — `sessionKey` now binds `userId` (`sessionKey(tenantId, userId, sessionId)`,
+>   userId required); two users can no longer collide on a shared `sessionId`. And the **expense-list
+>   own_and_team** follow-up shipped (the report list now filters owner OR team, like invoice/pay-run).
+> - ✅ **Regression gate (T28)** — `row-scope-gate.spec.ts` statically scans the swept services and FAILS
+>   if a new owned-resource `/:id` route ships without a fence (allowlisting only the tenant-shared ones).
+>
+> **ALL 16 findings closed.** The security-remediation arc is complete; the fence surface is regression-gated.
+> Next work is net-new capability + founder-gated unlocks (live demo / semantic embeddings), not remediation.
 
 ---
 
@@ -209,7 +213,7 @@ risk if one side is wired without the other. *Fix:* PIP populates `teamIds`; eve
 fail-*open* fragility with no RLS backstop — the opposite of the surrounding posture. *Fix:* treat
 missing scope as `own_only` (fail-closed) and require the claim at `authenticate()`.
 
-#### MEM-04 — Conversation isolation relies on an unvalidated `sessionId` *(partially-true)*
+#### ✅ MEM-04 (FIXED T28) — Conversation isolation relies on an unvalidated `sessionId` *(partially-true)*
 History is keyed `tenant:session` with no user binding; safe in today's in-process flows, but any
 future HTTP surface that trusts a client-supplied `sessionId` would leak another same-tenant user's
 transcript. *Fix:* fold `userId` into the session key, or validate session ownership on every access.

@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-10 (session T27). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-10 (session T28). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -128,7 +128,9 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     T25 PAP-validator test regressions.
   - **[T27] Amount-cap + per-user memory + audit sweep** (migrations 0035/0036 applied) — closed
     ABAC-01/04, AGENT-03, MEM-01/02/03 + the reporting row-scope gaps. See the T27 AUDIT_LOG entry.
-  - **Totals (T27):** `nx test ai-core` = **173/173** · `nx test db` = **93/93** (live) · `nx test
+  - **[T28] MEM-04 + expense-list team + row-scope gate + RECONCILIATION capability** — see the T28
+    AUDIT_LOG entry. Closes the last finding (16/16) + ships the first real autonomous capability.
+  - **Totals (T28):** `nx test ai-core` = **181/181** · `nx test db` = **95/95** (live) · `nx test
     access-control` = **126/126** · `nx test service-core` = **93/93** · `nx test user-management` =
     **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` =
     **79/79** · `nx test reporting` = **18/18**; all apps typecheck; strict `tsc` clean.
@@ -140,19 +142,18 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 - (nothing executing right now.)
 
 ## Next (recommended order) — post-T26 (security remediation continuing)
-> **SECURITY REMEDIATION ESSENTIALLY COMPLETE — 15 of 16 findings closed.** T26 did the row-scope slice
-> + agent-path hardening; **T27 took the two founder decisions and closed the rest:** amount-cap now
-> enforces (ABAC-01) + deny-reason redacted (ABAC-04); per-user memory scoping + provenance (AGENT-03,
-> MEM-01/02/03); and the row-scope audit swept the 4 never-covered services → `reporting` gaps fixed,
-> `notification`/`user-management`/`connectors` clean, workflow `rules` classified tenant-shared config.
-> **Only MEM-04 remains** — conversation `sessionId` has no user binding; LATENT (no HTTP surface trusts a
-> client sessionId today) — fold `userId` into the session key when such a surface ships.
-1. **MEM-04** (small, when a client-supplied sessionId surface is built) + the own_and_team *expense-list*
-   teammate refinement (fail-closed/safe today).
-2. **Founder-gated unlocks:** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` + agent memory via
-   MCP/Claude Desktop); an embedding-provider key → semantic app-brain recall (currently lexical).
-3. **New capability work** (net-new, not remediation): a second autonomous capability; generative-UI
-   renderer + voice; Chargebee live webhook wiring; the ABAC Phase 3+ (env/time conditions, obligations).
+> **SECURITY REMEDIATION COMPLETE — ALL 16 of 16 findings closed, and the fence surface is
+> regression-gated** (`row-scope-gate.spec.ts` fails if a new owned-resource route ships unfenced). T26
+> did the row-scope slice + agent-path hardening; T27 closed the amount-cap + per-user memory + swept the
+> 4 never-covered services; **T28 closed MEM-04 (session key binds userId), finished the expense-list
+> own_and_team parity, added the regression gate, AND shipped the first REAL autonomous capability —
+> RECONCILIATION** (deterministic checks → verified findings → recallable app-brain proposals; live-tested).
+1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` +
+   agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key → semantic app-brain
+   recall (currently lexical/hashing).
+2. **Net-new capability (buildable now):** more reconciliation checks (invoice AR vs ledger, payroll tax);
+   generative-UI renderer + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+   ABAC Phase 3+ (env/time conditions, obligations, retire the last hardcoded helpers).
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
    against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
 5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);

@@ -570,4 +570,39 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T28.*
+## T28 — 2026-07-10 · Finish the security tail (16/16) + the first REAL autonomous capability (reconciliation)
+
+- **Ask:** "finish off remaining items in our current implementation and start the next build in parallel."
+  Ran a 4-track Workflow (3 finish-off + 1 net-new); interrupted by a session limit (agents had written most
+  files); the caller completed the partial work + fixed 2 bugs + built the 4th track by hand.
+- **Done:**
+  - **MEM-04 (closes the LAST finding — 16/16):** `sessionKey(tenantId, sessionId)` → `sessionKey(tenantId,
+    userId, sessionId)` (userId REQUIRED; empty throws). `runConversation` gained a required `userId`. Two
+    users can no longer collide on a shared sessionId in one tenant. (Caller fixed the agent`s missed callers
+    in redis-persistence.spec / agent-memory.spec / conversation-memory.spec.)
+  - **Expense-list own_and_team parity:** the report LIST now filters by the signed scope claim
+    (own → self; own_and_team → self OR team_id ∈ teamIds; all → unrestricted) via `rowScopeListFilter`,
+    matching invoice/pay-run — a manager sees their team`s reports, not just their own.
+  - **Row-scope regression GATE:** factored the T27 scanner into `libs/ai-core/src/tool-registry/
+    scan-controller-row-scope.ts` (permission-classified static parse of `@http*` decorators →
+    `auditRowScope`) + `row-scope-gate.spec.ts` — FAILS if a new owned-resource `/:id` route ships without a
+    fence and is not an allowlisted tenant-shared exception. Green today (only the 2 workflow-rules routes,
+    both allowlisted). (The T27 script keeps its own inline copy; can switch to the module.)
+  - **RECONCILIATION — the first real propose-only autonomous capability** (`libs/ai-core/src/autonomy/
+    reconciliation.ts`): a `ReconciliationDataPort` seam (RLS-scoped, injected — no DB import in the file),
+    `expenseReportTotalCheck` (declared header total vs computed line-item sum, blast `reversible`),
+    `buildReconciliationChecks` + `runReconciliation` over the existing SelfAuditCapability, and
+    `appBrainProposalSink` that indexes verified findings into the app-brain as recallable `audit_finding`
+    memories (via `indexAuditProposal`). NO domain write. LLM-FREE: propose-only ⇒ non-material blast ⇒ V1
+    deterministic verification suffices. Live integration proves the full autonomous→verify→memory loop
+    against real Postgres+pgvector (caller fixed the test`s port to run inside `withTenantTransaction`).
+- **Verified:** ai-core **181/181** · db **95/95** (live, incl. reconciliation) · access-control 126/126 ·
+  expense 79/79 · invoice/payroll/reporting/user-management/service-core all green; strict `tsc` clean.
+  Commits `87a3de0` (3 tracks) + `3686e68` (gate).
+- **Net: ALL 16 audit findings closed; the fence surface is regression-gated; the first autonomous
+  capability ships.** The security-remediation arc is DONE. Next: founder-gated live demo / embeddings, or
+  net-new capability (more reconciliation checks, generative-UI, Chargebee live, ABAC Phase 3+).
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T29.*

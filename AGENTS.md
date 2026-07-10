@@ -1,29 +1,30 @@
 # AGENTS.md — Context for AI agents working on Aegis
 
 <!-- ▶ RESUME HERE — refresh this block at the end of every pass. Canonical status = docs/brain/STATE.md. -->
-> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-10, T27)
+> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-10, T28)
 >
 > **Branch:** `feat/agentic-platform` (pushed to origin = personal GitHub `25ankurpandey/aegis`; `main`
 > untouched). **Infra:** local pgvector Postgres @ 55432 + Redis @ 6380 — a Docker restart stops them, so
 > run `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d` before live tests.
 >
 > **Where we are.** Aegis is evolved from the shipped access-control platform into an **agentic-first
-> platform** on the governed core, on real infra, and is now **security-hardened to near-completion**: the
-> agentic layer (read/propose/human-supervised), multi-LLM gateway, module-entitlement loop, pgvector
-> app-brain + agent memory (Wayfinder port), the first propose-only autonomous capability, and a full
-> security audit with **15 of 16 findings remediated** — tenant + user/team fence enforced end-to-end
-> (RLS + single-resource + list, off the signed scope claim, fail-closed); the approval amount-cap now
-> ENFORCES; agent memory is per-user isolated. All green together (~820 tests across 9 projects), strict
-> typechecks clean, tree clean & pushed. Migrations applied through **0036**.
+> platform** on the governed core, on real infra, now **fully security-hardened**: the agentic layer
+> (read/propose/human-supervised), multi-LLM gateway, module-entitlement loop, pgvector app-brain + agent
+> memory (Wayfinder port), and a security audit with **ALL 16 of 16 findings remediated** — tenant +
+> user/team fence enforced end-to-end (RLS + single-resource + list, off the signed scope claim,
+> fail-closed) and **regression-gated** (`row-scope-gate.spec.ts`); amount-cap ENFORCES; memory is per-user
+> isolated; conversation keys bind userId. **The first REAL autonomous capability ships: RECONCILIATION**
+> (deterministic checks → verified findings → recallable app-brain proposals; propose-only, live-tested,
+> LLM-free). All green (~840 tests across 9 projects), strict typechecks clean, tree clean & pushed.
+> Migrations applied through **0036**.
 >
-> **What to pick up next** (nothing half-done; pick any — the security arc is essentially done):
-> 1. **MEM-04** (the one remaining finding — LATENT, safe today): fold `userId` into the conversation
->    session key when/ if an HTTP surface that accepts a client `sessionId` is built. Plus a small
->    fail-closed follow-up: own_and_team teammates in the *expense list*.
-> 2. **Founder-gated unlocks:** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` + agent memory via
->    MCP/Claude Desktop); an embedding-provider key → semantic app-brain recall (currently lexical).
-> 3. **Net-new capability** (no longer remediation): a second autonomous capability; generative-UI renderer
->    + voice; Chargebee live webhook wiring; ABAC Phase 3+ (env/time conditions, obligations).
+> **What to pick up next** (security is DONE — this is all net-new / founder-gated; nothing half-done):
+> 1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → the live end-to-end demo
+>    (`/_ai/act` + agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key →
+>    semantic app-brain recall (currently lexical/hashing).
+> 2. **Net-new capability (buildable now):** more reconciliation checks (invoice AR vs ledger, payroll tax);
+>    generative-UI renderer + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+>    ABAC Phase 3+ (env/time conditions, obligations, retire the last hardcoded policy helpers).
 >
 > **Read next, in order:** `docs/brain/STATE.md` (canonical current state + Next) → `docs/brain/PROGRESS.md`
 > (standing narrative briefing) → `docs/strategy/security-findings.md` (the audit + what's left) →

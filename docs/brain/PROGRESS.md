@@ -10,12 +10,17 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-10 (end of session T27). On branch **`feat/agentic-platform`**, pushed to
+> **Last updated:** 2026-07-10 (end of session T28). On branch **`feat/agentic-platform`**, pushed to
 > origin = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
 > **Postgres @ 55432** (migrated through **0036**) + **Redis @ 6380**. (A Docker restart stops them:
 > `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`.)
 >
-> **What we did last (T26–T27) — SECURITY HARDENING to near-completion (15 of 16 audit findings closed).**
+> **What we did last (T26–T28) — SECURITY FULLY HARDENED (16/16) + the first real autonomous capability.**
+> T28 closed the last finding (MEM-04: session key binds userId), finished the expense-list own_and_team
+> parity, added a row-scope REGRESSION GATE (a new unfenced owned-resource route now fails the suite), and
+> shipped **RECONCILIATION** — the first real propose-only autonomous capability (deterministic checks →
+> verified findings → recallable app-brain proposals; live-tested, LLM-free). ~840 tests green across 9
+> projects. Below is the T26–T27 detail; full T28 in AUDIT_LOG.
 > T25 ran an adversarial security audit (RBAC/ABAC/scope/RLS/agent/memory), 16 findings. T26 closed the
 > row-scope class: the **PIP** (teamIds/managerOf/approvalLimit minted into the signed JWT), `own_and_team`
 > now enforces, fail-closed scope, single-resource + list fences across expense/invoice/payroll, and
