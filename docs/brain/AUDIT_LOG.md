@@ -605,4 +605,34 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T29.*
+## T29 — 2026-07-10 · Deepen reconciliation into a real financial-integrity capability
+
+- **Ask:** "what's the next thing we should implement?" → recommended + founder chose **deepen
+  reconciliation** (turn the T28 PoC into a real continuous financial-integrity capability). Done solo
+  (schema-dependent + architecture-deciding work; kept tight control).
+- **Design:** kept the one-way lib dependency (ai-core → db). The vetted RLS-scoped recompute QUERIES
+  live in `libs/db/src/reconciliation/queries.ts` as PURE data functions (no ai-core import); the
+  capability's `ReconciliationDataPort` is satisfied by ADAPTING those functions at the wiring site
+  (runner/test), so no cycle. All checks are propose-only/`reversible` ⇒ V1 deterministic verification ⇒
+  **no LLM key needed**.
+- **Done:**
+  - **3 real checks over the REAL domain schema:** expense-report declared `total_amount` vs computed
+    `SUM(expenses.amount)`; invoices carrying an unresolved (`flagged`) `invoice_duplicates` record
+    (candidate double-payment); expenses orphaned on a soft-deleted report. Expanded
+    `ReconciliationDataPort` + `duplicateInvoiceCheck`/`orphanedExpenseCheck`; `buildReconciliationChecks`
+    runs all three. Verified findings → app-brain `audit_finding` memories via `appBrainProposalSink`.
+  - **Runner:** `scripts/reconciliation/run-reconciliation.ts` (per-tenant; adapts db queries → capability
+    → app-brain; prints a summary). Smoke-tested end-to-end (clean connect/close; 0 findings on an empty
+    tenant).
+  - **Live real-schema integration test** (`libs/db/test/reconciliation-live.integration.spec.ts`): seeds
+    3 planted discrepancies (mismatched total, flagged duplicate, orphaned expense), proves the capability
+    finds EXACTLY them, indexes them, and they're recallable (`kind=audit_finding`) — with NO domain write.
+    Offline spec extended to cover the full 3-check suite (isolation tests retargeted to the single check).
+- **Verified:** ai-core **182/182** · db **98/98** (live, incl. the real-schema reconciliation) ·
+  strict `tsc` clean. Committed `51045d2`.
+- **Remaining in this capability:** an HTTP **surface** (list/act on the proposals) + a **scheduled**
+  runner + optionally more checks (payroll tax, invoice AR vs ledger). Then the founder-gated live demo.
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T30.*

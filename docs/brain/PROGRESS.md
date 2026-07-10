@@ -10,7 +10,7 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-10 (end of session T28). On branch **`feat/agentic-platform`**, pushed to
+> **Last updated:** 2026-07-10 (end of session T29). On branch **`feat/agentic-platform`**, pushed to
 > origin = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
 > **Postgres @ 55432** (migrated through **0036**) + **Redis @ 6380**. (A Docker restart stops them:
 > `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`.)
