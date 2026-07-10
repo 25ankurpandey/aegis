@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-10 (session T30). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-10 (session T31). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -141,7 +141,13 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     indexes findings; `GET /_ai/reconcile/findings` lists the tenant's `audit_finding` proposals; guarded by
     `audit.view`) + `AppBrainService.listByKind` + the runner gained `--all` (scheduled all-tenants sweep,
     cron target; found real flagged-duplicate invoices in a smoke run).
-  - **Totals (T30):** `nx test ai-core` = **182/182** · `nx test db` = **99/99** (live) · `nx test
+  - **[T31] Generative-UI renderer** (`libs/ai-core/src/ui/render-html.ts`) — the previously out-of-scope
+    renderer for the UI-as-data layer: pure, XSS-safe, dependency-free `renderComponentToHtml`/`renderUiToHtml`/
+    `renderUiPage` over the whole `UiComponent` union (text/badge/alert/keyValue/table/form/approvalCard);
+    preserves the invariant (every value escaped, NO inline JS, actions as `data-*` + labeled buttons only).
+    Demo script writes an openable page; **`GET /_ai/reconcile/findings.html`** serves a tenant's live
+    findings as HTML — the agent loop is now VISIBLE in a browser with no LLM key / front-end build.
+  - **Totals (T31):** `nx test ai-core` = **188/188** · `nx test db` = **99/99** (live) · `nx test
     access-control` = **126/126** · `nx test service-core` = **93/93** · `nx test user-management` =
     **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` =
     **79/79** · `nx test reporting` = **18/18**; all apps typecheck; strict `tsc` clean.
@@ -162,7 +168,8 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` +
    agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key → semantic app-brain recall.
 2. **Other net-new (buildable now):** more reconciliation checks (payroll tax, invoice AR vs ledger);
-   generative-UI renderer + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+   an interactive/client generative-UI surface (a real front-end app or wiring the renderer's data-action
+   buttons to the governed routes) + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
    ABAC Phase 3+ (env/time conditions, obligations, retire hardcoded helpers); a real scheduler/worker for
    the `--all` reconciliation sweep (today it's a cron-able script).
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory

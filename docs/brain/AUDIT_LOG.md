@@ -658,4 +658,27 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T31.*
+## T31 — 2026-07-10 · Generative-UI renderer (make the agent loop visible) + live findings HTML page
+
+- **Ask:** "Continue" → took the recommended next item: the generative-UI renderer.
+- **Done:**
+  - **Server-side generative-UI renderer** (`libs/ai-core/src/ui/render-html.ts`) — the renderer the
+    UI-as-data layer (`ui-spec.ts`) deliberately left out of scope. Pure, XSS-safe, dependency-free:
+    `renderComponentToHtml` / `renderUiToHtml` / `renderUiPage` over the whole `UiComponent` union
+    (text/badge/alert/keyValue/table/form/approvalCard). Preserves the UI-as-data invariant — every value
+    HTML-escaped, NO inline JS, action refs emitted as `data-submit-tool`/`data-action` attributes +
+    labeled buttons ONLY (the host wires them to the governed route; the UI never embeds a callable). 6 tests.
+  - **Demo:** `scripts/ui/render-ui-demo.ts` writes an openable page (approval card + tool form + findings
+    table); the generated `demo-ui.html` is gitignored.
+  - **Live:** `GET /expense/v1/_ai/reconcile/findings.html` renders a tenant's `audit_finding` proposals as
+    an openable HTML review page via `renderUiPage` — ties the reconciliation capability to the renderer, so
+    the loop is VISIBLE in a browser with NO LLM key and NO front-end build.
+- **Verified:** ai-core **188/188** (+6 renderer) · expense **79/79** · strict `tsc` clean. Commits
+  `d2eb7b2` (renderer) + `f58ba2a` (findings.html).
+- **Next:** an interactive/client generative-UI surface (a front-end app, or wiring the renderer's
+  data-action buttons to governed routes) + voice; more reconciliation checks; founder-gated live demo /
+  semantic embeddings; Chargebee live; ABAC Phase 3+.
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T32.*

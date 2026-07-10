@@ -1,7 +1,7 @@
 # AGENTS.md — Context for AI agents working on Aegis
 
 <!-- ▶ RESUME HERE — refresh this block at the end of every pass. Canonical status = docs/brain/STATE.md. -->
-> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-10, T30)
+> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-10, T31)
 >
 > **Branch:** `feat/agentic-platform` (pushed to origin = personal GitHub `25ankurpandey/aegis`; `main`
 > untouched). **Infra:** local pgvector Postgres @ 55432 + Redis @ 6380 — a Docker restart stops them, so
@@ -18,15 +18,18 @@
 > items · unresolved duplicate invoices · orphaned expenses) → verified findings → recallable app-brain
 > proposals → a per-tenant runner + an `--all` scheduled sweep + an HTTP surface in expense (`POST
 > /_ai/reconcile` runs it; `GET /_ai/reconcile/findings` lists proposals; guarded by `audit.view`);
-> propose-only, live-tested, LLM-free. All green (~850 tests across 9 projects), strict typechecks clean,
-> tree clean & pushed. Migrations through **0036**.
+> propose-only, live-tested, LLM-free. **Generative-UI renderer** (T31): the UI-as-data layer now has a
+> pure XSS-safe HTML renderer (`libs/ai-core/src/ui/render-html.ts`) — the agent loop is VISIBLE in a
+> browser (`GET /_ai/reconcile/findings.html` serves live findings) with no LLM key / front-end build.
+> All green (~860 tests across 9 projects), strict typechecks clean, tree clean & pushed. Migrations through **0036**.
 >
-> **What to pick up next** (security is DONE, reconciliation is COMPLETE — all net-new / founder-gated):
+> **What to pick up next** (security DONE, reconciliation COMPLETE, renderer done — all net-new / founder-gated):
 > 1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → the live end-to-end demo
 >    (`/_ai/act` + agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key →
 >    semantic app-brain recall (currently lexical/hashing).
-> 2. **Other net-new (buildable now):** more reconciliation checks (payroll tax, invoice AR vs ledger);
->    generative-UI renderer + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+> 2. **Other net-new (buildable now):** an interactive/client generative-UI surface (front-end app, or wire
+>    the renderer's `data-action` buttons to governed routes) + voice; more reconciliation checks (payroll
+>    tax, invoice AR vs ledger); Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
 >    ABAC Phase 3+ (env/time conditions, obligations); a real scheduler/worker for the `--all` sweep.
 >
 > **Read next, in order:** `docs/brain/STATE.md` (canonical current state + Next) → `docs/brain/PROGRESS.md`
