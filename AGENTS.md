@@ -6,6 +6,8 @@
 > **Branch:** `feat/agentic-platform` (pushed to origin = personal GitHub `25ankurpandey/aegis`; `main`
 > untouched). **Infra:** local pgvector Postgres @ 55432 + Redis @ 6380 — a Docker restart stops them, so
 > run `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d` before live tests.
+> **On a fresh machine?** Start with [`RESUMING_ON_NEW_MACHINE.md`](RESUMING_ON_NEW_MACHINE.md) (clone →
+> install → infra → verify green → re-establish git push auth), then come back here.
 >
 > **Where we are.** Aegis is evolved from the shipped access-control platform into an **agentic-first
 > platform** on the governed core, on real infra, now **fully security-hardened**: the agentic layer
