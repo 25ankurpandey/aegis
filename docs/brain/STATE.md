@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-10 (session T29). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-10 (session T30). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -136,9 +136,12 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     expenses orphaned on a soft-deleted report), each propose-only/reversible ⇒ V1-verified (no LLM key);
     verified findings indexed into the app-brain as recallable `audit_finding` memories; a per-tenant
     runner `scripts/reconciliation/run-reconciliation.ts`. Live real-schema test proves it finds exactly
-    the planted discrepancies with NO domain write. Remaining: an HTTP **surface** (list/act on proposals)
-    + a **scheduled** runner.
-  - **Totals (T29):** `nx test ai-core` = **182/182** · `nx test db` = **98/98** (live) · `nx test
+    the planted discrepancies with NO domain write.
+  - **[T30] Reconciliation capability COMPLETE** — HTTP surface in expense (`POST /_ai/reconcile` runs it +
+    indexes findings; `GET /_ai/reconcile/findings` lists the tenant's `audit_finding` proposals; guarded by
+    `audit.view`) + `AppBrainService.listByKind` + the runner gained `--all` (scheduled all-tenants sweep,
+    cron target; found real flagged-duplicate invoices in a smoke run).
+  - **Totals (T30):** `nx test ai-core` = **182/182** · `nx test db` = **99/99** (live) · `nx test
     access-control` = **126/126** · `nx test service-core` = **93/93** · `nx test user-management` =
     **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` =
     **79/79** · `nx test reporting` = **18/18**; all apps typecheck; strict `tsc` clean.
@@ -156,13 +159,12 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 > 4 never-covered services; **T28 closed MEM-04 (session key binds userId), finished the expense-list
 > own_and_team parity, added the regression gate, AND shipped the first REAL autonomous capability —
 > RECONCILIATION** (deterministic checks → verified findings → recallable app-brain proposals; live-tested).
-1. **Finish the reconciliation capability:** an HTTP **surface** (an endpoint to list/act on the
-   app-brain `audit_finding` proposals — e.g. in a service or a new capability controller) + a
-   **scheduled** per-tenant runner; optionally more checks (payroll tax, invoice AR vs ledger).
-2. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` +
+1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` +
    agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key → semantic app-brain recall.
-3. **Other net-new (buildable now):** generative-UI renderer + voice; Chargebee live webhook wiring (flip
-   `AEGIS_ENTITLEMENT_FILTER=on`); ABAC Phase 3+ (env/time conditions, obligations, retire hardcoded helpers).
+2. **Other net-new (buildable now):** more reconciliation checks (payroll tax, invoice AR vs ledger);
+   generative-UI renderer + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+   ABAC Phase 3+ (env/time conditions, obligations, retire hardcoded helpers); a real scheduler/worker for
+   the `--all` reconciliation sweep (today it's a cron-able script).
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
    against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
 5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);

@@ -1,7 +1,7 @@
 # AGENTS.md — Context for AI agents working on Aegis
 
 <!-- ▶ RESUME HERE — refresh this block at the end of every pass. Canonical status = docs/brain/STATE.md. -->
-> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-10, T29)
+> ## ▶ RESUME HERE — where we are & what to pick up next (updated 2026-07-10, T30)
 >
 > **Branch:** `feat/agentic-platform` (pushed to origin = personal GitHub `25ankurpandey/aegis`; `main`
 > untouched). **Infra:** local pgvector Postgres @ 55432 + Redis @ 6380 — a Docker restart stops them, so
@@ -13,21 +13,21 @@
 > memory (Wayfinder port), and a security audit with **ALL 16 of 16 findings remediated** — tenant +
 > user/team fence enforced end-to-end (RLS + single-resource + list, off the signed scope claim,
 > fail-closed) and **regression-gated** (`row-scope-gate.spec.ts`); amount-cap ENFORCES; memory is per-user
-> isolated; conversation keys bind userId. **RECONCILIATION is now a real financial-integrity capability**
-> (T29): 3 vetted RLS-scoped deterministic checks over the REAL schema (expense-report total vs line items ·
-> unresolved duplicate invoices · orphaned expenses) → verified findings → recallable app-brain proposals →
-> a per-tenant runner (`scripts/reconciliation/run-reconciliation.ts`); propose-only, live-tested, LLM-free.
-> All green (~850 tests across 9 projects), strict typechecks clean, tree clean & pushed. Migrations through **0036**.
+> isolated; conversation keys bind userId. **RECONCILIATION is a COMPLETE financial-integrity capability**
+> (T29–T30): 3 vetted RLS-scoped deterministic checks over the REAL schema (expense-report total vs line
+> items · unresolved duplicate invoices · orphaned expenses) → verified findings → recallable app-brain
+> proposals → a per-tenant runner + an `--all` scheduled sweep + an HTTP surface in expense (`POST
+> /_ai/reconcile` runs it; `GET /_ai/reconcile/findings` lists proposals; guarded by `audit.view`);
+> propose-only, live-tested, LLM-free. All green (~850 tests across 9 projects), strict typechecks clean,
+> tree clean & pushed. Migrations through **0036**.
 >
-> **What to pick up next** (security is DONE — this is all net-new / founder-gated; nothing half-done):
-> 1. **Finish the reconciliation capability:** an HTTP **surface** (endpoint to list/act on the app-brain
->    `audit_finding` proposals) + a **scheduled** per-tenant runner; optionally more checks (payroll tax,
->    invoice AR vs ledger).
-> 2. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → the live end-to-end demo
+> **What to pick up next** (security is DONE, reconciliation is COMPLETE — all net-new / founder-gated):
+> 1. **Founder-gated unlocks (need YOU, not code):** drop `AEGIS_LLM_*` → the live end-to-end demo
 >    (`/_ai/act` + agent memory + reconciliation via MCP/Claude Desktop); an embedding-provider key →
 >    semantic app-brain recall (currently lexical/hashing).
-> 3. **Other net-new (buildable now):** generative-UI renderer + voice; Chargebee live webhook wiring (flip
->    `AEGIS_ENTITLEMENT_FILTER=on`); ABAC Phase 3+ (env/time conditions, obligations, retire hardcoded helpers).
+> 2. **Other net-new (buildable now):** more reconciliation checks (payroll tax, invoice AR vs ledger);
+>    generative-UI renderer + voice; Chargebee live webhook wiring (flip `AEGIS_ENTITLEMENT_FILTER=on`);
+>    ABAC Phase 3+ (env/time conditions, obligations); a real scheduler/worker for the `--all` sweep.
 >
 > **Read next, in order:** `docs/brain/STATE.md` (canonical current state + Next) → `docs/brain/PROGRESS.md`
 > (standing narrative briefing) → `docs/strategy/security-findings.md` (the audit + what's left) →

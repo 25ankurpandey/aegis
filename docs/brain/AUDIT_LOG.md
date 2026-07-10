@@ -635,4 +635,27 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T30.*
+## T30 — 2026-07-10 · Finish the reconciliation capability — HTTP surface + scheduled all-tenants runner
+
+- **Ask:** "do whatever is recommended" → finished the reconciliation capability per the T29 recommendation
+  (the HTTP surface + scheduling).
+- **Done:**
+  - **HTTP surface** (`apps/expense/src/controllers/reconciliation.controller.ts`, on the existing `/_ai/*`
+    surface): `POST /expense/v1/_ai/reconcile` runs every check for the caller's tenant, indexes the verified
+    findings into the app-brain, and returns a summary; `GET /_ai/reconcile/findings` lists the tenant's
+    `audit_finding` proposals (the human review surface). Guarded by `audit.view`; read+remember only, never
+    a domain write. Hosted in expense (the finance service) alongside the other agentic endpoints; reads
+    cross-domain via the shared RLS'd DB.
+  - **`AppBrainService.listByKind(kind, limit)`** — the findings-list data path (live-tested).
+  - **Scheduled runner:** `run-reconciliation.ts` gained `--all` — reconciles every active tenant
+    (per-tenant failures never abort the sweep); a cron target. Smoke-tested end-to-end and it found +
+    indexed REAL flagged-duplicate invoices across existing tenants.
+- **Verified:** expense **79/79** · db **99/99** (live, incl. the listByKind findings path) · expense
+  typecheck · strict `tsc` clean. Committed `7ad9e12`.
+- **Net: the reconciliation capability is COMPLETE** (3 checks over the real schema + runner + `--all`
+  sweep + HTTP run/list surface). Next: founder-gated live demo / semantic embeddings, or other net-new
+  (more checks, generative-UI renderer + voice, Chargebee live, ABAC Phase 3+, a real scheduler/worker).
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T31.*
