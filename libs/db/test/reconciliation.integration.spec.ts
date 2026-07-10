@@ -89,6 +89,13 @@ function sqlPort(): ReconciliationDataPort {
         computedTotalMinor: Number(row.computed_total_minor ?? 0),
       }));
     },
+    // This spec exercises the expense-total check over scratch tables only; the other checks read no rows.
+    async listUnresolvedDuplicateInvoices() {
+      return [];
+    },
+    async listOrphanedExpenses() {
+      return [];
+    },
   };
 }
 

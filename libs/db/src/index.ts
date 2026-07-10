@@ -28,6 +28,10 @@ export * from './brain/app-brain.repository';
 export * from './brain/app-brain.service';
 export * from './brain/indexers';
 
+// Reconciliation — the vetted, RLS-scoped deterministic recompute queries the reconciliation
+// autonomous capability runs (pure data; no @aegis/ai-core dependency — adapted at the wiring site).
+export * from './reconciliation/queries';
+
 // Chargebee webhook → entitlement materialization (pure event mapper + idempotent applier).
 export * from './entitlement/chargebee-webhook';
 

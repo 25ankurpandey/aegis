@@ -42,6 +42,20 @@ export interface ReconciliationDataPort {
   listExpenseReportTotals(): Promise<
     Array<{ reportId: string; declaredTotalMinor: number; computedTotalMinor: number }>
   >;
+  /**
+   * List invoices carrying an UNRESOLVED (`flagged`) duplicate record — each is already a finding
+   * (a potential double-payment) awaiting a human's adjudication.
+   */
+  listUnresolvedDuplicateInvoices(): Promise<
+    Array<{ invoiceId: string; duplicateOf: string | null; invoiceNumber: string; amountMinor: number; signature: string }>
+  >;
+  /**
+   * List expense line items still attached to a SOFT-DELETED report (referential-integrity drift) —
+   * each is a finding: an orphaned amount that should be reattached or removed.
+   */
+  listOrphanedExpenses(): Promise<
+    Array<{ expenseId: string; reportId: string; amountMinor: number }>
+  >;
 }
 
 /** The stable check id for the expense-report total reconciliation (used as the memory `ref` prefix). */
@@ -82,9 +96,74 @@ export function expenseReportTotalCheck(port: ReconciliationDataPort): AuditChec
   };
 }
 
+/** The stable check id for the unresolved-duplicate-invoice reconciliation. */
+export const DUPLICATE_INVOICE_CHECK_ID = 'reconcile.duplicate-invoice';
+
+/**
+ * A vetted check: flag every invoice with an UNRESOLVED (`flagged`) duplicate record — a candidate
+ * double-payment for a human to adjudicate (dismiss the flag or cancel the duplicate). blast
+ * `reversible` (propose-only; no domain write). Every returned row is a finding.
+ */
+export function duplicateInvoiceCheck(port: ReconciliationDataPort): AuditCheck {
+  return {
+    id: DUPLICATE_INVOICE_CHECK_ID,
+    description: 'Flag invoices carrying an unresolved (flagged) duplicate record for human review',
+    blast: 'reversible',
+    run: async (): Promise<{ findings: RawFinding[] }> => {
+      const rows = await port.listUnresolvedDuplicateInvoices();
+      return {
+        findings: rows.map((row) => ({
+          subjectRef: row.invoiceId,
+          summary:
+            `Invoice ${row.invoiceNumber} (${row.invoiceId}) is flagged as a potential duplicate` +
+            (row.duplicateOf ? ` of ${row.duplicateOf}` : ''),
+          expected: 'no unresolved duplicate flag',
+          observed: `flagged duplicate (signature ${row.signature}, amount ${row.amountMinor} minor)`,
+          recommendation:
+            `Review invoice ${row.invoiceNumber}: confirm it is a duplicate (and cancel it) or dismiss ` +
+            'the flag. Do not pay until resolved.',
+        })),
+      };
+    },
+  };
+}
+
+/** The stable check id for the orphaned-expense reconciliation. */
+export const ORPHANED_EXPENSE_CHECK_ID = 'reconcile.orphaned-expense';
+
+/**
+ * A vetted check: flag every expense line item still attached to a SOFT-DELETED report — an orphaned
+ * amount (referential-integrity drift). blast `reversible` (propose-only). Every returned row is a finding.
+ */
+export function orphanedExpenseCheck(port: ReconciliationDataPort): AuditCheck {
+  return {
+    id: ORPHANED_EXPENSE_CHECK_ID,
+    description: 'Flag expense line items still attached to a soft-deleted report',
+    blast: 'reversible',
+    run: async (): Promise<{ findings: RawFinding[] }> => {
+      const rows = await port.listOrphanedExpenses();
+      return {
+        findings: rows.map((row) => ({
+          subjectRef: row.expenseId,
+          summary: `Expense ${row.expenseId} is still attached to soft-deleted report ${row.reportId}`,
+          expected: 'attached to a live report (or detached)',
+          observed: `attached to soft-deleted report ${row.reportId} (amount ${row.amountMinor} minor)`,
+          recommendation:
+            `Reattach expense ${row.expenseId} to a live report or detach it; its report ` +
+            `${row.reportId} is soft-deleted.`,
+        })),
+      };
+    },
+  };
+}
+
 /** Build the full, version-pinned list of reconciliation checks for a given data port. */
 export function buildReconciliationChecks(port: ReconciliationDataPort): AuditCheck[] {
-  return [expenseReportTotalCheck(port)];
+  return [
+    expenseReportTotalCheck(port),
+    duplicateInvoiceCheck(port),
+    orphanedExpenseCheck(port),
+  ];
 }
 
 /**

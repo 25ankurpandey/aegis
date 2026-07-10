@@ -28,6 +28,14 @@ function fakePort(): ReconciliationDataPort {
         { reportId: 'rpt-bad', declaredTotalMinor: 20000, computedTotalMinor: 18500 },
       ];
     },
+    async listUnresolvedDuplicateInvoices() {
+      return [
+        { invoiceId: 'inv-2', duplicateOf: 'inv-1', invoiceNumber: 'INV-002', amountMinor: 9900, signature: 'sig-abc' },
+      ];
+    },
+    async listOrphanedExpenses() {
+      return [{ expenseId: 'exp-9', reportId: 'rpt-deleted', amountMinor: 4200 }];
+    },
   };
 }
 
@@ -48,7 +56,7 @@ describe('reconciliation — PROPOSE-ONLY, deterministic, V1-only (§0)', () => 
 
   it('runReconciliation emits exactly one VERIFIED proposal for the discrepant report', async () => {
     const sink = jest.fn((_p: AuditProposal) => {});
-    const checks = buildReconciliationChecks(fakePort());
+    const checks = [expenseReportTotalCheck(fakePort())];
 
     const report = await runReconciliation({ checks, proposalSink: sink });
 
@@ -67,9 +75,28 @@ describe('reconciliation — PROPOSE-ONLY, deterministic, V1-only (§0)', () => 
     expect(report.counts.needsHuman).toBe(0);
   });
 
+  it('buildReconciliationChecks runs the full suite: expense-total + duplicate-invoice + orphaned-expense', async () => {
+    const sink = jest.fn((_p: AuditProposal) => {});
+    const report = await runReconciliation({
+      checks: buildReconciliationChecks(fakePort()),
+      proposalSink: sink,
+    });
+
+    // One finding per check (the discrepant report, the flagged duplicate, the orphaned expense).
+    expect(report.counts.total).toBe(3);
+    expect(report.counts.verified).toBe(3); // all reversible ⇒ V1 verifies
+    const refs = report.proposals.map((p) => `${p.checkId}:${p.finding.subjectRef}`).sort();
+    expect(refs).toEqual([
+      'reconcile.duplicate-invoice:inv-2',
+      'reconcile.expense-report-total:rpt-bad',
+      'reconcile.orphaned-expense:exp-9',
+    ]);
+    expect(sink).toHaveBeenCalledTimes(3);
+  });
+
   it('the sink receives the finding as pure data — the discrepancy is carried through intact', async () => {
     let captured: AuditProposal | undefined;
-    const checks = buildReconciliationChecks(fakePort());
+    const checks = [expenseReportTotalCheck(fakePort())];
 
     await runReconciliation({
       checks,
@@ -94,10 +121,14 @@ describe('reconciliation — PROPOSE-ONLY, deterministic, V1-only (§0)', () => 
     const listSpy = jest.fn(async () => [
       { reportId: 'rpt-bad', declaredTotalMinor: 20000, computedTotalMinor: 18500 },
     ]);
-    const port: ReconciliationDataPort = { listExpenseReportTotals: listSpy };
+    const port: ReconciliationDataPort = {
+      listExpenseReportTotals: listSpy,
+      listUnresolvedDuplicateInvoices: async () => [],
+      listOrphanedExpenses: async () => [],
+    };
     const sink = jest.fn((_p: AuditProposal) => {});
 
-    await runReconciliation({ checks: buildReconciliationChecks(port), proposalSink: sink });
+    await runReconciliation({ checks: [expenseReportTotalCheck(port)], proposalSink: sink });
 
     // The port was READ exactly once (the recompute) and never asked to write (it has no writer).
     expect(listSpy).toHaveBeenCalledTimes(1);
