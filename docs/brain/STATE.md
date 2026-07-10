@@ -3,7 +3,7 @@
 > The one place for current status. Update this at the end of every working session (it is the
 > single-writer control surface; the narrative history lives in [`AUDIT_LOG.md`](AUDIT_LOG.md)).
 >
-> **Last updated:** 2026-07-09 (session T26). Branch **`feat/agentic-platform`** (pushed to origin =
+> **Last updated:** 2026-07-10 (session T27). Branch **`feat/agentic-platform`** (pushed to origin =
 > personal GitHub 25ankurpandey/aegis); live **pgvector** Postgres @ 55432 + Redis @ 6380 up (compose;
 > note: a Docker restart stops them — `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`).
 
@@ -126,10 +126,12 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
     source**. Closes **SCOPE-04, SCOPE-05, ABAC-02**; unblocks the amount-cap (needs `approvalLimit` source
     — founder Decision 1). Live PIP test proves resolution + tenant isolation. Also fixed 2 pre-existing
     T25 PAP-validator test regressions.
-  - **Totals:** `nx test ai-core` = **157/157** · `nx test db` = **82/82** (11 suites, live) ·
-    `nx test access-control` = **121/121** · `nx test service-core` = **93/93** · `nx test user-management` =
-    **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` = **79/79**;
-    all apps typecheck; strict clean.
+  - **[T27] Amount-cap + per-user memory + audit sweep** (migrations 0035/0036 applied) — closed
+    ABAC-01/04, AGENT-03, MEM-01/02/03 + the reporting row-scope gaps. See the T27 AUDIT_LOG entry.
+  - **Totals (T27):** `nx test ai-core` = **173/173** · `nx test db` = **93/93** (live) · `nx test
+    access-control` = **126/126** · `nx test service-core` = **93/93** · `nx test user-management` =
+    **41/41** · `nx test invoice` = **50/50** · `nx test payroll` = **84/84** · `nx test expense` =
+    **79/79** · `nx test reporting` = **18/18**; all apps typecheck; strict `tsc` clean.
   - **(superseded) T25 totals:** `nx test db` = **79/79** (10 suites, live
     pgvector/RLS/Chargebee/policy-read-port) · `nx test access-control` = **114/114** (10 suites); strict
     `tsc --noEmit` clean; expense + user-management apps typecheck.
@@ -138,16 +140,19 @@ red-teamed; the consolidated red-team defines the safe build sequence. The `CONT
 - (nothing executing right now.)
 
 ## Next (recommended order) — post-T26 (security remediation continuing)
-> **DONE (T26):** the row-scope slice (PIP SCOPE-04/ABAC-02, fail-closed SCOPE-05, single-resource
-> SCOPE-01/02/03, list filters + ROWSCOPE-03, AGENT-02) **AND agent-path hardening (AGENT-01/05/06** —
-> tenant-namespaced pending-action keys, proposer↔confirmer binding + SoD, confirm-time gate re-eval).
-> **13 of 16 findings closed.** See `security-findings.md`.
-1. **Founder-gated decisions** (documented in security-findings §Recommendations) — Decision 1: `approvalLimit`
-   source → turns the amount-cap on (ABAC-01/AGENT-04; the PIP seam is ready). Decision 2: memory scope model
-   → per-user memory authz + provenance (AGENT-03/MEM-01/02/03). Plus ABAC-04 deny-reason redaction.
-2. **Follow-ups:** own_and_team teammates in the *expense* list (fail-closed today); a registry/lint check
-   flagging any owned-resource route lacking a scope mechanism.
-3. **Then:** the live end-to-end demo (founder LLM key) + a real embedding provider (semantic app-brain recall).
+> **SECURITY REMEDIATION ESSENTIALLY COMPLETE — 15 of 16 findings closed.** T26 did the row-scope slice
+> + agent-path hardening; **T27 took the two founder decisions and closed the rest:** amount-cap now
+> enforces (ABAC-01) + deny-reason redacted (ABAC-04); per-user memory scoping + provenance (AGENT-03,
+> MEM-01/02/03); and the row-scope audit swept the 4 never-covered services → `reporting` gaps fixed,
+> `notification`/`user-management`/`connectors` clean, workflow `rules` classified tenant-shared config.
+> **Only MEM-04 remains** — conversation `sessionId` has no user binding; LATENT (no HTTP surface trusts a
+> client sessionId today) — fold `userId` into the session key when such a surface ships.
+1. **MEM-04** (small, when a client-supplied sessionId surface is built) + the own_and_team *expense-list*
+   teammate refinement (fail-closed/safe today).
+2. **Founder-gated unlocks:** drop `AEGIS_LLM_*` → live end-to-end demo (`/_ai/act` + agent memory via
+   MCP/Claude Desktop); an embedding-provider key → semantic app-brain recall (currently lexical).
+3. **New capability work** (net-new, not remediation): a second autonomous capability; generative-UI
+   renderer + voice; Chargebee live webhook wiring; the ABAC Phase 3+ (env/time conditions, obligations).
 4. **Live end-to-end demo** — founder drops `AEGIS_LLM_*` (gateway lights up) → run `/_ai/act` + agent memory
    against live `expense` / MCP into Claude Desktop; a real embedding key upgrades recall to semantic.
 5. Generative-UI **renderer** + **voice**; enterprise/compliance hardening. Money-writes GATED (D19);

@@ -537,4 +537,37 @@
 
 ---
 
-*Append new entries below this line, keeping chronological order (oldest first). Next entry: T27.*
+## T27 — 2026-07-10 · Parallel security completion — amount-cap + per-user memory + audit sweep
+
+- **Ask:** "what's next to implement?" → recommended the amount-cap; founder replied "ultracode is on, let's
+  implement everything in parallel" — greenlighting all remaining items with my recommended defaults for the
+  two decisions. Ran a 3-track Workflow with strict file ownership; caller (me) wired migrations/barrels,
+  ran migrations, verified, fixed the audit's gaps, and synced docs.
+- **Done (3 parallel tracks + caller integration):**
+  - **ABAC-01 + ABAC-04 (amount-cap):** migration `0035` adds `user_roles.approval_limit_minor` (BIGINT
+    NULL = unlimited = back-compat). The PIP now mints `approvalLimit` into the JWT (MAX non-null across the
+    user's roles); the previously-inert `amountCapPolicies` deny-override on the expense approve routes now
+    bites when a cap is configured. ABAC-04: the PDP deny reason is logged server-side (correlationId-enriched
+    via Logger) and the client gets a generic `denied by policy` — the cap value / policy id no longer leaks.
+  - **AGENT-03 + MEM-01/02/03 (per-user memory):** migration `0036` adds `owner_user_id` + `memory_scope`
+    (private|team, default private) + `created_by`/`updated_by` to `app_brain_memory`. Reads filter
+    `(memory_scope='team' OR owner_user_id=:user OR owner_user_id IS NULL)`; supersede/forget (by subject AND
+    by id) restricted to the owner so one user can't read or tombstone another's private memory; provenance
+    recorded. Legacy null-owner rows stay visible (back-compat).
+  - **Row-scope audit tool + sweep:** new `auditRowScope()` (`libs/ai-core/src/tool-registry/row-scope-audit.ts`)
+    + `scripts/security/audit-row-scope.ts`; swept the 4 services the T25 audit never covered. Found
+    `reporting` gaps (report-run get/export, report-schedule patch/delete — owned by requested_by/created_by,
+    no loader) → **caller fixed** with resource loaders. `notification` (repo already owner-filters),
+    `user-management` (admin/tenant-global routes), and workflow `connectors` (tenant config) are clean.
+    Workflow `rules` `:id` routes flagged borderline → **caller decision: classified as tenant-shared
+    automation config** (like connectors), left un-owner-scoped (documented, not a gap).
+- **Verified (all live):** access-control **126/126** · ai-core **173/173** · db **93/93** · reporting
+  **18/18** · user-management 41/41 · expense 79/79 · invoice 50/50 · payroll 84/84 · service-core 93/93;
+  strict `tsc` clean. Migrations 0035/0036 applied. Commits `249fd42` (tracks) + `9830ef5` (reporting fixes).
+- **Net: 15 of 16 audit findings closed.** Only **MEM-04** remains — conversation `sessionId` has no user
+  binding; LATENT (no HTTP surface trusts a client sessionId today). The security-remediation arc is
+  essentially complete; next work is net-new capability + the founder-gated live demo / embedding key.
+
+---
+
+*Append new entries below this line, keeping chronological order (oldest first). Next entry: T28.*

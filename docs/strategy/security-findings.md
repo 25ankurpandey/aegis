@@ -38,9 +38,21 @@
 >   ceremonies; a different same-tenant user for `second_approver` SoD — AGENT-01); and confirm
 >   **re-evaluates the gate** and voids the action if it tightened, with an optional `liveFacts` hook for
 >   the app to inject an authoritative live COUNT (AGENT-05).
-> Remaining open: AGENT-03, MEM-*, ABAC-04, and the founder-gated cap (Decision 1) + memory scope
-> (Decision 2). One documented follow-up: own_and_team teammates in the *expense* list (fail-closed
-> today; the single-report route already enforces team). See the remediation table for priorities.
+> - ✅ **ABAC-01/ABAC-04, AGENT-03, MEM-01/02/03 (FIXED T27)** — the two founder decisions were taken
+>   (amount-cap → `user_roles.approval_limit_minor`; memory → per-user `owner_user_id` + `memory_scope`,
+>   default private/opt-in team). Migrations 0035/0036 applied. The amount cap now enforces (deny-reason
+>   redacted); the app-brain is per-user isolated with provenance; one user can't read/tombstone another's
+>   private memory.
+> - ✅ **Reporting row-scope gaps (FIXED T27)** — the audit swept the 4 never-covered services; `reporting`
+>   had 4 unfenced owned-resource `:id` routes (report-run get/export, report-schedule patch/delete) — now
+>   fenced with resource loaders. `notification` + `user-management` + workflow `connectors` were already
+>   clean. Workflow `rules` `:id` routes are **classified as tenant-shared automation config** (like
+>   connectors) — a deliberate not-a-gap decision, not owner-scoped.
+>
+> **Remaining open: MEM-04 only** — conversation-history isolation relies on a caller-supplied `sessionId`
+> with no user binding. **Latent, not currently exploitable** (no HTTP surface trusts a client sessionId
+> today); the fix is to fold `userId` into the session key when such a surface ships. Plus one fail-closed
+> follow-up: own_and_team teammates in the *expense list* (safe today). **15 of 16 findings closed.**
 
 ---
 
@@ -112,7 +124,7 @@ the verifier; the hole is non-material bulk/reversible writes.)
 valid only when it comes from the human ceremony surface (a signed/step-up-bound token), not from the
 same agent request that proposed the action.
 
-#### AGENT-03 — Built-in memory tools execute writes with NO authorization concept
+#### ✅ AGENT-03 (FIXED T27) — Built-in memory tools execute writes with NO authorization concept
 `memory_remember`/`memory_forget` run **in-process** (never over a guarded route), so no permission
 is ever checked — their descriptor carries `permissions: []`, and the only gate is the danger gate
 (which classifies them tier-2 → allow+log). The store is RLS-scoped to **tenant only** (no
@@ -125,7 +137,7 @@ invalidated **both** users' rows. *Evidence:* `agent-orchestrator.ts:148-163,176
 tenant-shared memory as intended and gate `forgetBySubject` to the owner); give built-in write tools
 an explicit capability check before `execute()` — "no route" must not mean "no authorization."
 
-#### ABAC-01 — Approval amount cap is silently inert on the money path
+#### ✅ ABAC-01 (FIXED T27) — Approval amount cap is silently inert on the money path
 `amountCapPolicies` reads `principal.attributes.approvalLimit`, which is **never populated** (no
 issuer writes `attributes`; the `AttributeReadPort` PIP exists but has **zero callers**). So the
 loader returns `[]`, the PDP has no deny to apply, and **an approver with the RBAC approve permission
@@ -174,12 +186,12 @@ confirm wanted to. Combined with AGENT-01, a leaked/guessed id is a cross-tenant
 (ids are `randomUUID` today, so leak-only, not guessable). *Fix:* namespace keys by
 `tenant:(user):id` and require the caller's tenant on `get()`.
 
-#### MEM-02 — Cross-user supersession blast radius
+#### ✅ MEM-02 (FIXED T27) — Cross-user supersession blast radius
 `memory_remember` accepts a caller-chosen supersession `subject` scoped to the tenant, not the user —
 user B can silently overwrite/erase user A's fact. (Same root as AGENT-03.) *Fix:* scope supersede /
 `forgetBySubject` to `(tenant, owner_user_id)` once the owner column exists.
 
-#### MEM-03 — No user provenance on memory writes (audit gap)
+#### ✅ MEM-03 (FIXED T27) — No user provenance on memory writes (audit gap)
 No `created_by`/`updated_by` recorded on any memory write — impossible to attribute who stored /
 updated / forgot a fact, inconsistent with the platform's hash-chained audit elsewhere. *Fix:* record
 `RequestContext.userId()` on every remember/supersede/forget.
@@ -213,7 +225,7 @@ silently-inert money-path rule.
 
 ### 🟡 LOW
 
-#### ABAC-04 — PDP deny reason leaked to the client verbatim
+#### ✅ ABAC-04 (FIXED T27) — PDP deny reason leaked to the client verbatim
 The PDP deny reason flows through `ErrUtils.forbidden(decision.reason)` and the error middleware
 returns it unredacted for 4xx. The amount-cap policy id embeds the limit
 (`amount-cap:expense.report.approve:5000`), so once the PIP populates `approvalLimit`, an over-cap

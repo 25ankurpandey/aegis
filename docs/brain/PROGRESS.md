@@ -10,10 +10,21 @@
 > [`RESOLVER.md`](RESOLVER.md) · decisions = [`discussions/README.md`](discussions/README.md) (D1–D20,
 > O1–O8) · the safe build order = [`../strategy/red-team-consolidated.md`](../strategy/red-team-consolidated.md).
 >
-> **Last updated:** 2026-07-09 (end of session T25). On branch **`feat/agentic-platform`**, pushed to
+> **Last updated:** 2026-07-10 (end of session T27). On branch **`feat/agentic-platform`**, pushed to
 > origin = personal GitHub `25ankurpandey/aegis` (main untouched). Live infra up: aegis **pgvector**
-> **Postgres @ 55432** (migrated through 0034) + **Redis @ 6380**. (A Docker restart stops them:
+> **Postgres @ 55432** (migrated through **0036**) + **Redis @ 6380**. (A Docker restart stops them:
 > `AEGIS_POSTGRES_PORT=55432 AEGIS_REDIS_PORT=6380 docker compose up -d`.)
+>
+> **What we did last (T26–T27) — SECURITY HARDENING to near-completion (15 of 16 audit findings closed).**
+> T25 ran an adversarial security audit (RBAC/ABAC/scope/RLS/agent/memory), 16 findings. T26 closed the
+> row-scope class: the **PIP** (teamIds/managerOf/approvalLimit minted into the signed JWT), `own_and_team`
+> now enforces, fail-closed scope, single-resource + list fences across expense/invoice/payroll, and
+> agent-path hardening (pending-action tenant-namespacing + proposer↔confirmer binding + confirm-time gate
+> re-eval). T27 took the two founder decisions and closed the rest: the **amount-cap now enforces**
+> (migration 0035, deny-reason redacted), **per-user memory scoping** + provenance (migration 0036), and a
+> **row-scope audit tool** swept the 4 never-covered services (fixed `reporting`'s gaps; classified workflow
+> `rules` as tenant-shared config). Only **MEM-04** remains (conversation sessionId binding — latent, safe
+> today). ~820 tests green across 9 projects; strict typechecks clean; all pushed. Details in AUDIT_LOG T25–T27.
 
 ---
 

@@ -281,10 +281,12 @@ build if a capability lacks a description/tier. Full: [stack-sufficiency.md], [a
 ## 12. Current build state (what's REAL vs DESIGNED — be honest)
 
 **REAL, shipping today** (branch `feat/agentic-platform`, pushed to origin = personal GitHub
-`25ankurpandey/aegis`; all green: **ai-core 154/154 (19 suites)** + **db 79/79 (10 suites, live
-pgvector/RLS/Chargebee/policy-read-port)** + **access-control 114/114 (10 suites)**; strict typechecks
-clean; `expense` + `user-management` apps typecheck. Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
-0034) + Redis @ 6380):**
+`25ankurpandey/aegis`; all green at T27: **ai-core 173/173** + **db 93/93 (live
+pgvector/RLS/Chargebee/policy-read-port/PIP-cap/memory-owner)** + **access-control 126/126** + all 5
+business apps (expense/invoice/payroll/reporting/user-management) — ~820 tests across 9 projects; strict
+typechecks clean. **Security audit: 15 of 16 findings remediated** (see `docs/strategy/security-findings.md`).
+Local infra up: aegis **pgvector** Postgres @ 55432 (migrated through
+0036) + Redis @ 6380):**
 - The **~46k-LOC access-control substrate** (see §6.2; `SPEC.md`/`IMPLEMENTATION_PLAN.md` authoritative).
 - **Metadata stamping** — `libs/service-core/src/bootstrap/route-metadata.ts`; `authorize()`/`validate()`
   stamp the `Permission` + Joi schema onto the handler (fixes the "trapped in closures" gap).
