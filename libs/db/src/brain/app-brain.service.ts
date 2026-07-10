@@ -94,6 +94,11 @@ export class AppBrainService {
     return this.repo.listByKind('profile', limit);
   }
 
+  /** Live memories of a given `kind`, newest updated first (e.g. list `audit_finding` proposals). */
+  listByKind(kind: string, limit = 100): Promise<AppBrainMemory[]> {
+    return this.repo.listByKind(kind, limit);
+  }
+
   /** The most recently updated live memories of ANY kind, newest first — "what's salient now". */
   salient(limit = 10): Promise<AppBrainMemory[]> {
     return this.repo.listRecent(limit);

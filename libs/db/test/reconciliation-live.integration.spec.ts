@@ -176,4 +176,18 @@ describe('reconciliation (live Postgres, REAL schema, RLS as aegis_app)', () => 
     // The reconciled report never produced a finding, so it is not in memory.
     expect(refs).not.toContain(`${EXPENSE_REPORT_TOTAL_CHECK_ID}:${R_OK}`);
   });
+
+  it('listByKind("audit_finding") returns the findings (the review-surface data path)', async () => {
+    if (!live) return;
+    const service = new AppBrainService({ tenantId: tenant });
+    const listed = await service.listByKind('audit_finding', 50);
+    expect(listed.every((m) => m.kind === 'audit_finding')).toBe(true);
+    expect(listed.map((m) => m.ref)).toEqual(
+      expect.arrayContaining([
+        `${EXPENSE_REPORT_TOTAL_CHECK_ID}:${R_DISCREPANT}`,
+        `${DUPLICATE_INVOICE_CHECK_ID}:${INV_DUP}`,
+        `${ORPHANED_EXPENSE_CHECK_ID}:${E_ORPHAN}`,
+      ]),
+    );
+  });
 });

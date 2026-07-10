@@ -13,8 +13,10 @@
  *   TS_NODE_COMPILER_OPTIONS='{"module":"commonjs","esModuleInterop":true}' \
  *     node -r ts-node/register -r tsconfig-paths/register scripts/reconciliation/run-reconciliation.ts <tenantId>
  */
+import { QueryTypes } from 'sequelize';
 import {
   AppBrainService,
+  getSequelize,
   listExpenseReportTotals,
   listUnresolvedDuplicateInvoices,
   listOrphanedExpenses,
@@ -27,20 +29,13 @@ import {
   type ReconciliationDataPort,
 } from '@aegis/ai-core';
 
-async function main(): Promise<void> {
-  const tenantId = process.argv[2] ?? process.env.AEGIS_TENANT_ID;
-  if (!tenantId) {
-    process.stderr.write('usage: run-reconciliation.ts <tenantId>  (or set AEGIS_TENANT_ID)\n');
-    process.exit(2);
-  }
-
-  // Adapt the RLS-scoped db queries into the capability's data port (pinned to this tenant).
+/** Reconcile ONE tenant: adapt the RLS-scoped db queries → the capability → the app-brain, print a summary. */
+async function reconcileTenant(tenantId: string): Promise<void> {
   const port: ReconciliationDataPort = {
     listExpenseReportTotals: () => listExpenseReportTotals({ tenantId }),
     listUnresolvedDuplicateInvoices: () => listUnresolvedDuplicateInvoices({ tenantId }),
     listOrphanedExpenses: () => listOrphanedExpenses({ tenantId }),
   };
-
   const service = new AppBrainService({ tenantId });
   const report = await runReconciliation({
     checks: buildReconciliationChecks(port),
@@ -57,8 +52,36 @@ async function main(): Promise<void> {
   for (const p of report.proposals) {
     process.stdout.write(`  - [${p.status}] ${p.checkId} :: ${p.finding.summary}\n`);
   }
-  process.stdout.write('\nAll findings were indexed into the app-brain (kind=audit_finding) for recall.\n\n');
+}
 
+async function main(): Promise<void> {
+  const arg = process.argv[2] ?? process.env.AEGIS_TENANT_ID;
+  if (!arg) {
+    process.stderr.write('usage: run-reconciliation.ts <tenantId | --all>  (or set AEGIS_TENANT_ID)\n');
+    process.exit(2);
+  }
+
+  if (arg === '--all') {
+    // Scheduled sweep: reconcile every active tenant. Enumerating tenants is cross-tenant, so this
+    // mode is intended to run with a service/owner DATABASE_URL; under the RLS app role it would only
+    // see the caller's own tenant. Failures are per-tenant and never abort the whole sweep.
+    const tenants = await getSequelize().query<{ id: string }>(
+      `SELECT id FROM tenants WHERE status = 'active' ORDER BY id`,
+      { type: QueryTypes.SELECT },
+    );
+    process.stdout.write(`Reconciling ${tenants.length} active tenant(s)...\n`);
+    for (const { id } of tenants) {
+      try {
+        await reconcileTenant(id);
+      } catch (err) {
+        process.stderr.write(`  tenant ${id} failed: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+    }
+  } else {
+    await reconcileTenant(arg);
+  }
+
+  process.stdout.write('\nAll findings were indexed into the app-brain (kind=audit_finding) for recall.\n\n');
   await closeSequelize();
 }
 
