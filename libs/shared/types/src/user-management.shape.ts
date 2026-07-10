@@ -226,6 +226,12 @@ export namespace UserManagementShape {
     teamIds: string[];
     /** User ids this user manages (PIP; drives the `manager_of` ABAC operator). */
     managerOf: string[];
+    /**
+     * Max amount (minor units) this user may approve, resolved as the MAX non-null
+     * `approval_limit_minor` across their role assignments (PIP; drives the amount-cap ABAC
+     * deny-override). Absent/undefined ⇒ no cap configured ⇒ unlimited (back-compat).
+     */
+    approvalLimit?: number;
   }
 
   // ---- Repository write inputs ----
@@ -489,11 +495,14 @@ export namespace UserManagementShape {
     /**
      * Subject attributes for ABAC (the PIP output, minted at login so they ride in the signed token
      * and cannot be forged). `teamIds` powers `own_and_team` row scope; `managerOf` powers the
-     * `manager_of` policy operator. Absent on legacy tokens (the PEP treats missing as empty).
+     * `manager_of` policy operator; `approvalLimit` (minor units) powers the amount-cap
+     * deny-override. Absent on legacy tokens (the PEP treats missing as empty); `approvalLimit`
+     * omitted ⇒ no cap ⇒ unlimited (back-compat).
      */
     attributes?: {
       teamIds?: string[];
       managerOf?: string[];
+      approvalLimit?: number;
       [key: string]: unknown;
     };
   }

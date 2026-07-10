@@ -94,14 +94,15 @@ export class UserRepository {
 
   /** Resolve the user's role name(s), flattened permission names, and row-level scope. */
   async getAccess(userId: string, t: Transaction): Promise<UserManagementShape.UserAccess> {
-    // PIP attributes (teamIds + managerOf) are loaded regardless of role assignment so that a
-    // scoped user still gets them; they ride into the signed token at login (see AuthService.login).
-    const { teamIds, managerOf } = await this.loadPipAttributes(userId, t);
+    // PIP attributes (teamIds + managerOf + approvalLimit) are loaded regardless of role assignment
+    // so that a scoped user still gets them; they ride into the signed token at login (see
+    // AuthService.login).
+    const { teamIds, managerOf, approvalLimit } = await this.loadPipAttributes(userId, t);
 
     const { UserRole, Role, RolePermission, Permission } = getIdentityContext();
     const userRoles = await UserRole.findAll({ where: { user_id: userId }, transaction: t });
     if (userRoles.length === 0) {
-      return { roles: [], permissions: [], scope: 'own_only', teamIds, managerOf };
+      return { roles: [], permissions: [], scope: 'own_only', teamIds, managerOf, approvalLimit };
     }
 
     const ur = userRoles[0].get({ plain: true }) as { role_id: string; scope: string };
@@ -115,19 +116,26 @@ export class UserRepository {
       : [];
     const permNames = perms.map((p) => (p.get({ plain: true }) as { name: string }).name);
 
-    return { roles: roleName ? [roleName] : [], permissions: permNames, scope: ur.scope, teamIds, managerOf };
+    return { roles: roleName ? [roleName] : [], permissions: permNames, scope: ur.scope, teamIds, managerOf, approvalLimit };
   }
 
   /**
-   * The Policy Information Point (PIP): resolve the user's team memberships and management subtree.
-   * Runs inside the caller's RLS transaction, so both queries are tenant-scoped by Postgres — no
-   * cross-tenant leakage and no explicit tenant predicate needed. `teamIds` feeds `own_and_team`
-   * row scope; `managerOf` feeds the `manager_of` ABAC operator (the user ids this user manages).
+   * The Policy Information Point (PIP): resolve the user's team memberships, management subtree, and
+   * approval cap. Runs inside the caller's RLS transaction, so every query is tenant-scoped by
+   * Postgres — no cross-tenant leakage and no explicit tenant predicate needed. `teamIds` feeds
+   * `own_and_team` row scope; `managerOf` feeds the `manager_of` ABAC operator (the user ids this
+   * user manages); `approvalLimit` feeds the amount-cap ABAC deny-override.
+   *
+   * `approvalLimit` is the MAX non-null `approval_limit_minor` across the user's `user_roles` rows —
+   * a user may hold >1 role, and the most permissive cap wins (a stricter tenant-wide ceiling can be
+   * composed via a persisted deny policy; deny-overrides mean the stricter of the two applies). NULL
+   * / no rows ⇒ `undefined` ⇒ no cap ⇒ unlimited (back-compat). Returned as a `number` (minor units;
+   * BIGINT stringifies through the driver, so it is coerced) or `undefined`.
    */
   private async loadPipAttributes(
     userId: string,
     t: Transaction,
-  ): Promise<{ teamIds: string[]; managerOf: string[] }> {
+  ): Promise<{ teamIds: string[]; managerOf: string[]; approvalLimit?: number }> {
     const sequelize = getSequelize();
     const teamRows = await sequelize.query<{ team_id: string }>(
       `SELECT DISTINCT team_id FROM team_members WHERE user_id = $1`,
@@ -137,9 +145,16 @@ export class UserRepository {
       `SELECT DISTINCT user_id FROM approval_hierarchy WHERE manager_id = $1`,
       { bind: [userId], type: QueryTypes.SELECT, transaction: t },
     );
+    const capRows = await sequelize.query<{ approval_limit_minor: string | number | null }>(
+      `SELECT MAX(approval_limit_minor) AS approval_limit_minor FROM user_roles WHERE user_id = $1`,
+      { bind: [userId], type: QueryTypes.SELECT, transaction: t },
+    );
+    const rawCap = capRows[0]?.approval_limit_minor;
+    const approvalLimit = rawCap == null ? undefined : Number(rawCap);
     return {
       teamIds: teamRows.map((r) => r.team_id),
       managerOf: managedRows.map((r) => r.user_id),
+      approvalLimit: Number.isFinite(approvalLimit) ? approvalLimit : undefined,
     };
   }
 

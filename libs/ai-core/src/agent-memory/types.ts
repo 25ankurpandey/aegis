@@ -33,6 +33,12 @@ export interface AgentRememberInput {
   content: string;
   metadata?: Record<string, unknown> | null;
   importance?: number | null;
+  /**
+   * Visibility scope (mirrors the v2 store's `RememberInput.scope`): `private` (DEFAULT — owner-only)
+   * or `team` (tenant-shared). The OWNER itself is never supplied here — the store binds the acting
+   * user at construction (RLS/owner scoping), so a tool can request sharing but not spoof ownership.
+   */
+  scope?: 'private' | 'team';
 }
 
 /**

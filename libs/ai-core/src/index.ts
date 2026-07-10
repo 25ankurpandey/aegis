@@ -29,6 +29,7 @@ export * from './danger/danger-policy';
 export * from './danger/approval-gateway';
 export * from './danger/danger-gate';
 export * from './tool-registry/registry-validation';
+export * from './tool-registry/row-scope-audit';
 export * from './execution/supervised-action-broker';
 export * from './memory/conversation-store';
 export * from './memory/run-conversation';

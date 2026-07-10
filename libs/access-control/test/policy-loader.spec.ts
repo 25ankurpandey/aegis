@@ -64,6 +64,49 @@ describe('amountCapPolicies (W5-04)', () => {
   });
 });
 
+describe('amountCapPolicies — ABAC-01 close (cap now has a source via the PIP)', () => {
+  const loader = amountCapPolicies(Permission.ExpenseReportApprove);
+  const decide = (p: AccessShape.Principal, rules: AccessShape.PolicyRule[], amount: number) =>
+    evaluateAbac(
+      { principal: p, action: Permission.ExpenseReportApprove, resource: reportOf(amount) },
+      rules,
+    );
+
+  it('DENIES an over-cap approval', async () => {
+    const p = principal({ attributes: { [APPROVAL_LIMIT_ATTR]: 5000_00 } });
+    const rules = await loader(p);
+    expect(decide(p, rules, 5000_01).allow).toBe(false);
+  });
+
+  it('ALLOWS an at-cap approval (boundary is inclusive — gt, not gte)', async () => {
+    const p = principal({ attributes: { [APPROVAL_LIMIT_ATTR]: 5000_00 } });
+    const rules = await loader(p);
+    expect(decide(p, rules, 5000_00).allow).toBe(true);
+  });
+
+  it('ALLOWS an under-cap approval', async () => {
+    const p = principal({ attributes: { [APPROVAL_LIMIT_ATTR]: 5000_00 } });
+    const rules = await loader(p);
+    expect(decide(p, rules, 1_00).allow).toBe(true);
+  });
+
+  it('is a NO-OP when the principal carries no approvalLimit (unlimited approver, back-compat)', async () => {
+    const p = principal(); // no attributes at all
+    const rules = await loader(p);
+    expect(rules).toEqual([]);
+    // With no cap rule, the amount-cap leg never denies — a huge amount still passes the ABAC leg.
+    expect(decide(p, rules, 1_000_000_00).allow).toBe(true);
+  });
+
+  it('does not embed the cap in a client-facing message here — the leak fix lives in the PEP (ABAC-04)', async () => {
+    // The policy id intentionally carries the cap for server-side logs; the PEP now returns a
+    // generic client message instead of this reason (see pep.ts / ABAC-04).
+    const p = principal({ attributes: { [APPROVAL_LIMIT_ATTR]: 5000_00 } });
+    const rules = await loader(p);
+    expect(rules[0].id).toContain('5000');
+  });
+});
+
 describe('combinePolicies', () => {
   it('concatenates the rules from each loader', async () => {
     const a = amountCapPolicies(Permission.ExpenseReportApprove);

@@ -33,6 +33,8 @@ import * as auditHashCanonicalization from './0031_audit_hash_canonicalization';
 import * as tenantModules from './0032_tenant_modules';
 import * as appBrainMemory from './0033_app_brain_memory';
 import * as appBrainMemoryV2 from './0034_app_brain_memory_v2';
+import * as userRolesApprovalLimit from './0035_user_roles_approval_limit';
+import * as appBrainMemoryOwner from './0036_app_brain_memory_owner';
 
 /** Ordered list of schema migrations (explicit imports so the bundled CLI can run them). */
 export const migrations: MigrationModule[] = [
@@ -70,4 +72,6 @@ export const migrations: MigrationModule[] = [
   { name: '0032_tenant_modules', up: tenantModules.up, down: tenantModules.down },
   { name: '0033_app_brain_memory', up: appBrainMemory.up, down: appBrainMemory.down },
   { name: '0034_app_brain_memory_v2', up: appBrainMemoryV2.up, down: appBrainMemoryV2.down },
+  { name: '0035_user_roles_approval_limit', up: userRolesApprovalLimit.up, down: userRolesApprovalLimit.down },
+  { name: '0036_app_brain_memory_owner', up: appBrainMemoryOwner.up, down: appBrainMemoryOwner.down },
 ];

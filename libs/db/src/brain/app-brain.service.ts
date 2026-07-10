@@ -24,6 +24,13 @@ import type { AppBrainMemory, RecallHit, RememberInput } from './types';
  * (workers/tests); on the request path the ambient RequestContext tenant is used. Inject a different
  * embedding provider via `deps.embedding` — but its `dimensions` MUST match the table's `vector(N)`
  * column (see APP_BRAIN_EMBEDDING_DIM), and its `embedderId` partitions recall to rows it embedded.
+ *
+ * OWNER-SCOPING (migration 0036, closes AGENT-03/MEM-01/02/03): construct with `{ userId }` (the
+ * acting user) and the repository stamps ownership + provenance on writes and filters every read to
+ * the user's own + `team`-scoped + legacy rows, so one user never recalls, supersedes, or forgets
+ * another user's PRIVATE memory. A `RememberInput.scope` of `team` opts a fact into tenant-sharing;
+ * absent/`private` keeps it owner-scoped. Method signatures are unchanged (`userId` was already a
+ * constructor opt); off-request callers with no `userId` see only `team` + legacy rows.
  */
 export class AppBrainService {
   private readonly repo: AppBrainRepository;
@@ -38,9 +45,11 @@ export class AppBrainService {
   }
 
   /**
-   * Embed `input.content` and store it as a tenant memory (tagged with this client's embedder id).
-   * When `input.subject` is non-blank, every live same-subject row is superseded (soft-invalidated)
-   * first, in the same transaction as the insert. Returns the persisted memory.
+   * Embed `input.content` and store it as a tenant memory (tagged with this client's embedder id),
+   * owned by the constructor's `userId` and scoped by `input.scope` (default `private`; `team`
+   * makes it tenant-shared). When `input.subject` is non-blank, every live same-subject row THIS
+   * USER may tombstone (own + legacy) is superseded (soft-invalidated) first, in the same
+   * transaction as the insert. Returns the persisted memory.
    */
   async remember(input: RememberInput): Promise<AppBrainMemory> {
     const embedding = await this.embedding.embed(input.content);

@@ -59,9 +59,15 @@ export class AuthService {
         scope: access.scope,
         aud: 'aegis',
         // PIP attributes minted into the signed token (unforgeable). They power own_and_team row
-        // scope (teamIds) and the manager_of ABAC operator (managerOf). Freshness = token TTL; a
-        // team/hierarchy change takes effect on the next login/refresh.
-        attributes: { teamIds: access.teamIds, managerOf: access.managerOf },
+        // scope (teamIds), the manager_of ABAC operator (managerOf), and the amount-cap
+        // deny-override (approvalLimit, minor units). Freshness = token TTL; a team/hierarchy/cap
+        // change takes effect on the next login/refresh. `approvalLimit` is only present when the
+        // user has a cap configured — omitting it (undefined) keeps unlimited approvers back-compat.
+        attributes: {
+          teamIds: access.teamIds,
+          managerOf: access.managerOf,
+          ...(access.approvalLimit != null ? { approvalLimit: access.approvalLimit } : {}),
+        },
       };
       const session = await this.sessions.create(
         {

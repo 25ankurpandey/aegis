@@ -287,7 +287,17 @@ export function authorizeAny(actions: Permission[], opts: AuthorizeOptions = {})
             ? decide({ principal, action: allowedAction, resource }, policies)
             : evaluateAbac({ principal, action: allowedAction, resource }, policies);
         if (!decision.allow) {
-          return next(ErrUtils.forbidden(decision.reason));
+          // ABAC-04: the detailed deny reason can embed the policy id / cap value (e.g.
+          // `amount-cap:expense.report.approve:5000`), disclosing the approver's personal cap or a
+          // tenant policy UUID. Log the full reason server-side (auto-keyed by correlationId via the
+          // Logger's RequestContext enrichment) and return a GENERIC message to the client.
+          Logger.warn('authorization denied by policy', {
+            action: allowedAction,
+            reason: decision.reason,
+            resourceType: resource?.type,
+            resourceId: resource?.id,
+          });
+          return next(ErrUtils.forbidden('denied by policy'));
         }
         res.locals.obligations = decision.obligations ?? [];
         return next();

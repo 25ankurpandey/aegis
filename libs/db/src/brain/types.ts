@@ -21,11 +21,26 @@ export const APP_BRAIN_EMBEDDING_DIM = 384;
  */
 export type AppBrainKind = 'doc' | 'tool' | 'audit_finding' | 'note' | string;
 
+/**
+ * Owner-scoping for a memory (migration 0036, closes AGENT-03/MEM-01/02/03):
+ * - `private` (DEFAULT) — visible only to its owner (`owner_user_id`) plus legacy owner-less rows.
+ * - `team`              — tenant-shared: every user in the tenant can recall it.
+ * Owner scoping is an APP-LAYER predicate layered on top of the tenant RLS (never replaces it).
+ */
+export type MemoryScope = 'private' | 'team';
+
 /** Input to remember (store) a memory. `ref` (when set) makes the memory upsertable per kind. */
 export interface RememberInput {
   kind: AppBrainKind;
   /** Stable external key within (tenant, kind); when non-null the write upserts on it. */
   ref?: string | null;
+  /**
+   * Visibility scope (default `private`). `private` memories are readable only by their owner (the
+   * acting user threaded through the repository/service) plus legacy owner-less rows; `team`
+   * memories are tenant-shared. The owner itself is NOT taken from this input — it comes from the
+   * repository's `userId` option so a caller can never spoof another user's ownership.
+   */
+  scope?: MemoryScope;
   /**
    * SUPERSESSION key (Wayfinder memory semantics): when non-blank, `remember` first
    * soft-invalidates (sets `valid_to = now()`) every LIVE row of the same tenant whose trimmed
@@ -60,6 +75,18 @@ export interface AppBrainMemory {
   embedder: string;
   /** Optional salience weight as stored (see {@link RememberInput.importance}). */
   importance: number | null;
+  /**
+   * Owning user (migration 0036). NULL = a legacy/tenant-shared row written before owner-scoping —
+   * such rows stay visible to every user in the tenant for back-compat. Otherwise the user who owns
+   * a `private` memory.
+   */
+  ownerUserId: string | null;
+  /** Visibility scope (see {@link MemoryScope}): `private` (owner-only) or `team` (tenant-shared). */
+  scope: MemoryScope;
+  /** Provenance (MEM-03): the user who first stored this memory. NULL on legacy/off-request writes. */
+  createdBy: string | null;
+  /** Provenance (MEM-03): the user who last wrote/superseded this memory. NULL on legacy writes. */
+  updatedBy: string | null;
   /**
    * Soft-invalidation tombstone (Zep/Graphiti-style `valid_to`, per ADR-0001): NULL = LIVE; set =
    * superseded or forgotten. Dead rows are kept for audit/history but excluded from every read path

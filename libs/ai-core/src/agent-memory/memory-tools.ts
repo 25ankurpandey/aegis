@@ -35,6 +35,13 @@ export const RECALL_MAX_K = 20;
 /** The `kind` a memory defaults to when the model does not classify it. */
 export const DEFAULT_MEMORY_KIND = 'note';
 
+/**
+ * The visibility scope a memory defaults to (AGENT-03/MEM-01 posture): PRIVATE to the acting user
+ * unless the model explicitly requests `team`. Owner-scoping is enforced by the store; this only
+ * chooses whether the fact is shared.
+ */
+export const DEFAULT_MEMORY_SCOPE = 'private';
+
 /** The kinds `memory_remember` accepts from the model; anything else falls back to "note". */
 const REMEMBER_KINDS = new Set(['note', 'decision', 'profile']);
 
@@ -71,7 +78,8 @@ export function makeMemoryTools(store: AgentMemoryStore): BuiltinTool[] {
         'that was made, "profile" for durable user/tenant facts (always shown in future prompts), ' +
         'and "note" (default) for everything else. Provide "subject" as a stable key when the fact ' +
         'can change over time (e.g. "billing plan") — a new memory with the same subject replaces ' +
-        'the old one.',
+        'the old one. Memories are PRIVATE to the current user by default; set scope "team" only for ' +
+        'facts the whole tenant should share.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -85,6 +93,13 @@ export function makeMemoryTools(store: AgentMemoryStore): BuiltinTool[] {
             enum: ['note', 'decision', 'profile'],
             default: DEFAULT_MEMORY_KIND,
             description: 'note (default) | decision (decision journal) | profile (always-in-prompt).',
+          },
+          scope: {
+            type: 'string',
+            enum: ['private', 'team'],
+            default: DEFAULT_MEMORY_SCOPE,
+            description:
+              'private (default; only this user recalls it) | team (shared with everyone in the tenant).',
           },
           title: { type: 'string', description: 'Optional short title.' },
         },
@@ -100,14 +115,16 @@ export function makeMemoryTools(store: AgentMemoryStore): BuiltinTool[] {
       const kind = REMEMBER_KINDS.has(rawKind) ? rawKind : DEFAULT_MEMORY_KIND;
       const subject = asTrimmedString(args.subject);
       const title = asTrimmedString(args.title);
+      const scope = asTrimmedString(args.scope) === 'team' ? 'team' : DEFAULT_MEMORY_SCOPE;
       try {
         const stored = await store.remember({
           kind,
           content,
+          scope,
           ...(subject ? { subject } : {}),
           ...(title ? { title } : {}),
         });
-        return { ok: true, id: stored.id, kind, ...(subject ? { subject } : {}) };
+        return { ok: true, id: stored.id, kind, scope, ...(subject ? { subject } : {}) };
       } catch (err) {
         return { ok: false, error: errorMessage(err) };
       }
